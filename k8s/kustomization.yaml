@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: finance-tracker
+
+resources:
+  - namespace.yaml
+  - backend-config.yaml
+  - postgres.yaml
+  - backend-deployment.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+
+# Secret sengaja TIDAK didaftarkan di sini — backend-secret.example.yaml hanya
+# template. Buat Secret-nya lebih dulu (lihat komentar di file tersebut),
+# baru jalankan `kubectl apply -k .`.
+
+# Sengaja tidak memakai commonLabels: label seperti itu ikut disuntikkan ke
+# selector Deployment/StatefulSet, dan selector bersifat immutable — sekali
+# ter-apply, mengubahnya memaksa delete-recreate. Semua label sudah ditulis
+# eksplisit di tiap manifest.
+
+images:
+  - name: personal-finance-tracker-api
+    newTag: 0.1.0

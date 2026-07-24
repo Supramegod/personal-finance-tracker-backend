@@ -1,0 +1,519 @@
+basePath: /api/v1
+definitions:
+  handler.createCategoryRequest:
+    properties:
+      icon:
+        type: string
+      name:
+        type: string
+      type:
+        type: string
+    type: object
+  handler.createTransactionRequest:
+    properties:
+      amount:
+        type: number
+      category_id:
+        type: string
+      note:
+        type: string
+      transaction_date:
+        type: string
+      type:
+        type: string
+    type: object
+  handler.loginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  handler.refreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    type: object
+  handler.updateTransactionRequest:
+    properties:
+      amount:
+        type: number
+      category_id:
+        type: string
+      note:
+        type: string
+      transaction_date:
+        type: string
+      type:
+        type: string
+    type: object
+  repository.Category:
+    properties:
+      created_at:
+        type: string
+      icon:
+        type: string
+      id:
+        type: string
+      is_default:
+        type: boolean
+      name:
+        type: string
+      type:
+        type: string
+      user_id:
+        type: string
+    type: object
+  repository.ReportRow:
+    properties:
+      period:
+        type: string
+      total_expense:
+        type: number
+      total_income:
+        type: number
+    type: object
+  repository.Transaction:
+    properties:
+      amount:
+        type: number
+      category_id:
+        type: string
+      category_name:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      note:
+        type: string
+      transaction_date:
+        type: string
+      type:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  repository.User:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      full_name:
+        type: string
+      id:
+        type: string
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
+  service.BalanceResponse:
+    properties:
+      balance:
+        type: number
+    type: object
+  service.LoginResponse:
+    properties:
+      access_token:
+        type: string
+      refresh_token:
+        type: string
+      user:
+        $ref: '#/definitions/repository.User'
+    type: object
+  service.ReportResponse:
+    properties:
+      net:
+        type: number
+      periods:
+        items:
+          $ref: '#/definitions/repository.ReportRow'
+        type: array
+      total_expense:
+        type: number
+      total_income:
+        type: number
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: admin@example.com
+    name: Developer
+  description: Aplikasi pencatatan keuangan pribadi — Backend API
+  license:
+    name: Private
+  termsOfService: http://swagger.io/terms/
+  title: Personal Finance Tracker API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Autentikasi user dengan email dan password, mengembalikan access
+        token + refresh token
+      parameters:
+      - description: Email dan Password
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.loginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.LoginResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Login user
+      tags:
+      - Auth
+  /auth/logout:
+    post:
+      description: Menghapus sesi user (invalidasi token)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Logout user
+      tags:
+      - Auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Mendapatkan access token baru menggunakan refresh token
+      parameters:
+      - description: Refresh Token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.refreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.LoginResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Refresh access token
+      tags:
+      - Auth
+  /categories:
+    get:
+      description: Mendapatkan daftar kategori transaksi milik user yang login
+      parameters:
+      - description: 'Filter by type: income / expense'
+        in: query
+        name: type
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Daftar kategori
+      tags:
+      - Categories
+    post:
+      consumes:
+      - application/json
+      description: Membuat kategori transaksi custom (P1)
+      parameters:
+      - description: Data kategori
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/repository.Category'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Buat kategori baru
+      tags:
+      - Categories
+  /summary/balance:
+    get:
+      description: Mendapatkan saldo terkini (running balance) = total income - total
+        expense
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.BalanceResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Saldo berjalan
+      tags:
+      - Summary
+  /summary/report:
+    get:
+      description: Mendapatkan ringkasan income vs expense per periode
+      parameters:
+      - description: 'Periode: daily / weekly / monthly (default: monthly)'
+        in: query
+        name: period
+        type: string
+      - description: Tanggal awal (YYYY-MM-DD)
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: Tanggal akhir (YYYY-MM-DD)
+        in: query
+        name: to
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.ReportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Laporan keuangan
+      tags:
+      - Summary
+  /transactions:
+    get:
+      description: Mendapatkan daftar transaksi dengan filter dan pagination
+      parameters:
+      - description: Filter tanggal awal (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: Filter tanggal akhir (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: Filter by kategori
+        in: query
+        name: category_id
+        type: string
+      - description: 'Filter by type: income / expense'
+        in: query
+        name: type
+        type: string
+      - description: 'Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Item per halaman (default: 20)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      - BearerAuth: []
+      summary: Daftar transaksi
+      tags:
+      - Transactions
+    post:
+      consumes:
+      - application/json
+      description: Mencatat transaksi income atau expense baru
+      parameters:
+      - description: Data transaksi
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/repository.Transaction'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Buat transaksi baru
+      tags:
+      - Transactions
+  /transactions/{id}:
+    delete:
+      description: Menghapus transaksi berdasarkan ID
+      parameters:
+      - description: ID Transaksi
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus transaksi
+      tags:
+      - Transactions
+    get:
+      description: Mendapatkan detail transaksi berdasarkan ID
+      parameters:
+      - description: ID Transaksi
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/repository.Transaction'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Detail transaksi
+      tags:
+      - Transactions
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui data transaksi berdasarkan ID
+      parameters:
+      - description: ID Transaksi
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data transaksi yang diupdate
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.updateTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/repository.Transaction'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update transaksi
+      tags:
+      - Transactions
+schemes:
+- http
+securityDefinitions:
+  BearerAuth:
+    description: 'Masukkan token dengan format: Bearer &lt;access_token&gt;'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

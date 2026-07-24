@@ -1,0 +1,22 @@
+# Rahasia — jangan pernah masuk ke build context
+.env
+.env.local
+.env.production
+
+# Artefak build & test
+build/
+coverage/
+coverage
+tmp/
+*.log
+
+# Dokumen & tooling yang tidak dibutuhkan saat build
+Makefile
+README.md
+docs/openapi.yaml
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,51 @@
+# ============================================
+# Personal Finance Tracker — Backend (Go)
+# ============================================
+# Berlaku saat repo di-init di folder backend/ ini. Kalau repo di-init di
+# root project, .gitignore root yang berlaku — keduanya sengaja dibuat
+# konsisten agar rahasia tidak pernah lolos di skenario mana pun.
+
+# ─── Rahasia — JANGAN PERNAH di-commit ───────────
+.env
+.env.local
+.env.production
+*.pem
+*.key
+
+# Secret Kubernetes yang sudah terisi. Hanya template *.example.yaml
+# yang boleh masuk repo.
+k8s/*-secret.yaml
+!k8s/*-secret.example.yaml
+
+# ─── Artefak build ────────────────────────────────
+build/
+tmp/
+# Binary hasil `go build` tanpa -o
+server
+setup
+*.exe
+
+# ─── Test & coverage ──────────────────────────────
+# `coverage` bisa berupa file maupun folder, tergantung target Makefile.
+coverage
+coverage/
+coverage*
+*.out
+*.test
+
+# ─── Log ──────────────────────────────────────────
+*.log
+
+# ─── OS & editor ──────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── Yang SENGAJA TIDAK diabaikan ─────────────────
+# db/migrations/  — dibutuhkan saat runtime, RunMigrations() membacanya
+#                   dari disk lewat path relatif, bukan di-embed.
+# docs/           — docs.go dan swagger.json diimpor sebagai package Go;
+#                   mengabaikannya membuat build gagal.

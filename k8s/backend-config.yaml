@@ -1,0 +1,32 @@
+# Konfigurasi non-rahasia untuk backend API.
+# Semua nilai rahasia (JWT_SECRET, password) ada di Secret, bukan di sini.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: finance-tracker
+  labels:
+    app.kubernetes.io/name: finance-api
+    app.kubernetes.io/part-of: personal-finance-tracker
+data:
+  PORT: "8080"
+  APP_ENV: "production"
+  LOG_LEVEL: "info"
+
+  # Connection pool — sesuaikan dengan max_connections PostgreSQL.
+  # Nilai ini per-pod, jadi total koneksi = DB_MAX_OPEN_CONNS x jumlah replica.
+  DB_MAX_OPEN_CONNS: "25"
+  DB_MAX_IDLE_CONNS: "5"
+  DB_CONN_MAX_LIFETIME: "5m"
+
+  # Masa berlaku token. WAJIB memakai unit Go duration (h/m/s).
+  # Unit "d" TIDAK didukung time.ParseDuration dan akan diabaikan diam-diam.
+  JWT_ACCESS_EXPIRY: "15m"
+  JWT_REFRESH_EXPIRY: "168h"
+
+  # Ganti ke domain frontend yang sebenarnya sebelum deploy.
+  CORS_ORIGINS: "https://finance.example.com"
+  SWAGGER_HOST: "api.finance.example.com"
+
+  # Rate limit per menit per IP.
+  RATE_LIMIT_PER_MINUTE: "60"

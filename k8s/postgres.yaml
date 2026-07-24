@@ -1,0 +1,93 @@
+# PostgreSQL untuk lingkungan self-hosted / staging.
+# Untuk produksi, pertimbangkan managed database (Neon, Supabase, RDS) —
+# StatefulSet ini tidak punya backup otomatis, failover, atau point-in-time
+# recovery. Kalau tetap dipakai, siapkan CronJob pg_dump terpisah.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: finance-tracker
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: personal-finance-tracker
+spec:
+  # Headless service — StatefulSet butuh ini untuk DNS stabil per-pod.
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: finance-tracker
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: personal-finance-tracker
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+    spec:
+      securityContext:
+        # UID 999 adalah user postgres di image resmi.
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgres-secret
+          env:
+            # Data disimpan di subdirektori, bukan langsung di mount point —
+            # initdb menolak direktori yang berisi lost+found.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          # $(POSTGRES_USER)/$(POSTGRES_DB) tidak diekspansi di dalam exec probe,
+          # jadi nilainya ditulis eksplisit — samakan dengan postgres-secret.
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "finance", "-d", "finance_tracker"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "finance", "-d", "finance_tracker"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+        # storageClassName sengaja dikosongkan agar memakai default cluster.
+        # Isi eksplisit kalau cluster punya beberapa StorageClass.

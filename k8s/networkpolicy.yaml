@@ -1,0 +1,45 @@
+# Opsional — butuh CNI yang mendukung NetworkPolicy (Calico, Cilium, Weave).
+# Di cluster tanpa dukungan itu manifest ini diterima tapi tidak berefek apa pun.
+# Tujuannya: database hanya boleh dihubungi oleh pod API, bukan oleh seluruh
+# workload di cluster.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-api-only
+  namespace: finance-tracker
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: finance-api
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Default deny untuk trafik masuk ke pod API selain dari ingress controller.
+# Sesuaikan namespace ingress controller kalau bukan ingress-nginx.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-allow-ingress-only
+  namespace: finance-tracker
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: finance-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
