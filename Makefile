@@ -3,7 +3,7 @@
 # ============================================
 
 .PHONY: run build test test-cover test-short test-integration migrate swagger clean help \
-        docker-up docker-down docker-reset docker-build docker-run \
+        docker-up docker-up-all docker-down docker-reset docker-build docker-run \
         k8s-apply k8s-status k8s-logs k8s-delete
 
 # ─── Variables ─────────────────────────────────
@@ -68,15 +68,18 @@ clean: ## Clean build artifacts and coverage
 	rm -rf $(COVERAGE_DIR)
 
 # ─── Docker ─────────────────────────────────────
-docker-up: ## Start PostgreSQL via Docker Compose
-	docker compose -f ../docker-compose.yml up -d
+docker-up: ## Start PostgreSQL saja (API dijalankan lewat `make run`)
+	docker compose up -d db
 
-docker-down: ## Stop PostgreSQL
-	docker compose -f ../docker-compose.yml down
+docker-up-all: ## Start PostgreSQL + API, keduanya di dalam container
+	docker compose up -d --build
 
-docker-reset: ## Reset database (WARNING: deletes all data!)
-	docker compose -f ../docker-compose.yml down -v
-	docker compose -f ../docker-compose.yml up -d
+docker-down: ## Stop semua service
+	docker compose down
+
+docker-reset: ## Reset database (PERINGATAN: seluruh data terhapus!)
+	docker compose down -v
+	docker compose up -d db
 
 docker-build: ## Build Docker image for the Go API
 	docker build -t $(IMAGE) -f Dockerfile .

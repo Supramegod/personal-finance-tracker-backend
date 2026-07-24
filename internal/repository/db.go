@@ -50,12 +50,14 @@ func (db *DB) RunMigrations() error {
 
 	sort.Strings(files)
 
+	// File di db/migrations/ HANYA boleh berisi perubahan skema (DDL).
+	// Seeding user admin dan kategori default ditangani SeedAdmin(), bukan SQL —
+	// supaya password di-hash oleh kode aplikasi dan kredensialnya berasal dari
+	// environment variable, bukan tertulis di dalam file yang ikut ter-commit.
+	// Direktori ini juga di-mount ke /docker-entrypoint-initdb.d oleh
+	// docker-compose, jadi file seed di sini akan tetap jalan meski dilewati
+	// di kode — itulah sebabnya file seed dihapus, bukan sekadar di-skip.
 	for _, file := range files {
-		// Skip seed files - handled by SeedAdmin
-		if strings.Contains(file, "006_seed_categories") || strings.Contains(file, "007_seed_data") {
-			continue
-		}
-
 		sql, err := os.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("read migration file %s: %w", file, err)

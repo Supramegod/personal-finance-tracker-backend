@@ -1,0 +1,56 @@
+# docker-compose.yml — Personal Finance Tracker Backend
+# Untuk development lokal: PostgreSQL 16 + API Go.
+#
+# Cara pakai:
+#   cp .env.example .env      # isi dulu DATABASE_URL, JWT_SECRET, ADMIN_*
+#   docker compose up -d db   # hanya database (API dijalankan via `make run`)
+#   docker compose up -d      # database + API dalam container
+#   docker compose down       # stop
+#   docker compose down -v    # stop + hapus volume (SEMUA DATA HILANG)
+#
+# Catatan: db/migrations sengaja TIDAK di-mount ke /docker-entrypoint-initdb.d.
+# Migrasi dijalankan oleh aplikasi saat start (repository.RunMigrations), dan
+# seeding admin oleh SeedAdmin() memakai kredensial dari environment variable.
+# Menjalankan keduanya akan menduplikasi DDL tanpa manfaat.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: finance-tracker-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-finance}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finance123}
+      POSTGRES_DB: ${POSTGRES_DB:-finance_tracker}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finance} -d ${POSTGRES_DB:-finance_tracker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: personal-finance-tracker-api:0.1.0
+    container_name: finance-tracker-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    # Semua konfigurasi dari .env. DATABASE_URL di-override karena di dalam
+    # network compose host database bernama "db", bukan "localhost".
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-finance}:${POSTGRES_PASSWORD:-finance123}@db:5432/${POSTGRES_DB:-finance_tracker}?sslmode=disable
+
+volumes:
+  pgdata:
+    driver: local
