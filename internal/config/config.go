@@ -4,8 +4,13 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
+
+// minJWTSecretLength adalah panjang minimum JWT_SECRET yang diterima,
+// sesuai aturan keamanan di stack-conventions.md.
+const minJWTSecretLength = 32
 
 // Config menyimpan semua konfigurasi aplikasi dari environment variable.
 type Config struct {
@@ -44,15 +49,19 @@ type Config struct {
 // Load membaca konfigurasi dari environment variable.
 func Load() *Config {
 	cfg := &Config{
-		DatabaseURL:        getEnv("DATABASE_URL", "postgresql://finance:finance123@localhost:5432/finance_tracker?sslmode=disable"),
+		// Kredensial WAJIB diisi lewat environment variable — tidak ada
+		// nilai default. Default yang lemah (mis. "admin123") ikut terbaca
+		// publik lewat source code dan akan terpakai diam-diam kalau env
+		// var lupa diset saat deploy.
+		DatabaseURL:        getEnv("DATABASE_URL", ""),
 		DBMaxOpenConns:     getEnvInt("DB_MAX_OPEN_CONNS", 25),
 		DBMaxIdleConns:     getEnvInt("DB_MAX_IDLE_CONNS", 5),
 		DBConnMaxLifetime:  getEnvDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
 		JWTSecret:          getEnv("JWT_SECRET", ""),
 		JWTAccessExpiry:    GetJWTAccessExpiry(),
 		JWTRefreshExpiry:   GetJWTRefreshExpiry(),
-		AdminEmail:         getEnv("ADMIN_EMAIL", "admin@example.com"),
-		AdminPassword:      getEnv("ADMIN_PASSWORD", "admin123"),
+		AdminEmail:         getEnv("ADMIN_EMAIL", ""),
+		AdminPassword:      getEnv("ADMIN_PASSWORD", ""),
 		Port:               getEnv("PORT", "8080"),
 		Env:                getEnv("APP_ENV", "development"),
 		SwaggerHost:        getEnv("SWAGGER_HOST", "localhost:8080"),
@@ -61,8 +70,32 @@ func Load() *Config {
 		LogLevel:           getEnv("LOG_LEVEL", "debug"),
 	}
 
+	// Kumpulkan semua yang kosong dulu, baru lapor sekaligus — supaya tidak
+	// perlu start-gagal berulang kali satu env var per percobaan.
+	var missing []string
+	if cfg.DatabaseURL == "" {
+		missing = append(missing, "DATABASE_URL")
+	}
 	if cfg.JWTSecret == "" {
-		log.Fatal("JWT_SECRET is required")
+		missing = append(missing, "JWT_SECRET")
+	}
+	if cfg.AdminEmail == "" {
+		missing = append(missing, "ADMIN_EMAIL")
+	}
+	if cfg.AdminPassword == "" {
+		missing = append(missing, "ADMIN_PASSWORD")
+	}
+	if len(missing) > 0 {
+		log.Fatalf("environment variable wajib belum diset: %s "+
+			"(lihat .env.example, atau salin: cp .env.example .env)",
+			strings.Join(missing, ", "))
+	}
+
+	// JWT_SECRET pendek membuat HMAC-SHA256 rentan brute force.
+	if len(cfg.JWTSecret) < minJWTSecretLength {
+		log.Fatalf("JWT_SECRET terlalu pendek: %d karakter, minimal %d "+
+			"(generate: openssl rand -base64 48)",
+			len(cfg.JWTSecret), minJWTSecretLength)
 	}
 
 	return cfg
