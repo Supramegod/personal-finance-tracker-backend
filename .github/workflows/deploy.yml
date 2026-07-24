@@ -1,0 +1,118 @@
+# Alur: push ke main -> test -> build image -> push ke GitHub Container
+# Registry -> SSH ke server -> tarik image baru -> restart container.
+#
+# Secret yang harus dibuat di GitHub (Settings > Secrets and variables >
+# Actions > New repository secret):
+#   SSH_HOST  — IP atau domain server
+#   SSH_USER  — user SSH di server (mis. deploy)
+#   SSH_KEY   — isi private key OpenSSH, termasuk baris BEGIN/END
+#   SSH_PORT  — opsional, default 22
+#
+# GITHUB_TOKEN dibuat otomatis, tidak perlu didaftarkan.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # tombol "Run workflow" manual di tab Actions
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - run: go build ./...
+      - run: go vet ./...
+      # Hanya test yang tidak butuh PostgreSQL. Test service/integration
+      # perlu database dan tidak dijalankan di sini.
+      - run: go test ./pkg/... -count=1 -short
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # izin push ke ghcr.io
+    outputs:
+      image: ${{ steps.ref.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR menolak nama repository yang mengandung huruf kapital, sedangkan
+      # github.repository mempertahankan kapitalisasi asli ("Supramegod/...").
+      # Tanpa langkah ini, docker pull gagal: "repository name must be lowercase".
+      - id: ref
+        run: |
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "repo_lc=$REPO_LC" >> "$GITHUB_OUTPUT"
+          echo "image=${{ env.REGISTRY }}/$REPO_LC:sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Dua tag: SHA commit (immutable, untuk rollback) dan latest.
+          tags: |
+            ${{ steps.ref.outputs.image }}
+            ${{ env.REGISTRY }}/${{ steps.ref.outputs.repo_lc }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH ke server dan restart container
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          API_IMAGE: ${{ needs.build-and-push.outputs.image }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: API_IMAGE
+          script_stop: true # berhenti di perintah pertama yang gagal
+          script: |
+            set -e
+            cd ~/finance-backend
+
+            # API_IMAGE memakai tag SHA, bukan latest — supaya jelas versi mana
+            # yang jalan dan rollback tinggal menyetel ulang nilai ini.
+            # Compose mengambilnya dari environment shell, yang menang atas .env.
+            export API_IMAGE
+            echo "Deploy image: $API_IMAGE"
+
+            docker compose -f docker-compose.prod.yml pull api
+            docker compose -f docker-compose.prod.yml up -d
+
+            # Tunggu API benar-benar siap sebelum deploy dinyatakan berhasil.
+            # /ready ikut mem-ping database, jadi ini menguji koneksi DB juga.
+            for i in $(seq 1 30); do
+              if docker exec finance-api wget -qO- http://127.0.0.1:8080/ready >/dev/null 2>&1; then
+                echo "Deploy OK — API siap"
+                docker image prune -f
+                exit 0
+              fi
+              sleep 2
+            done
+
+            echo "Deploy GAGAL — API tidak siap dalam 60 detik. Log terakhir:"
+            docker compose -f docker-compose.prod.yml logs --tail 50 api
+            exit 1

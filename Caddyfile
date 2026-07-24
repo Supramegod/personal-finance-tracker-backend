@@ -1,0 +1,37 @@
+# Caddy mengurus HTTPS otomatis: minta sertifikat Let's Encrypt saat start,
+# perpanjang sendiri, dan redirect HTTP ke HTTPS. Tidak ada konfigurasi TLS
+# manual yang perlu ditulis.
+#
+# Syarat: DNS domain di {$API_DOMAIN} sudah mengarah ke IP server ini, dan
+# port 80 + 443 terbuka. Kalau DNS belum siap, penerbitan sertifikat gagal
+# dan Caddy akan terus mencoba ulang.
+
+{$API_DOMAIN} {
+	# Batasi ukuran body — API ini tidak menerima upload besar.
+	request_body {
+		max_size 2MB
+	}
+
+	# Header keamanan dasar untuk API yang memegang token finansial.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# Endpoint probe tidak perlu masuk log akses.
+	@probes path /health /ready
+	log_skip @probes
+
+	reverse_proxy api:8080 {
+		health_uri /health
+		health_interval 30s
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

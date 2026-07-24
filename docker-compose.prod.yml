@@ -1,0 +1,68 @@
+# docker-compose.prod.yml — dipakai DI SERVER, bukan di laptop.
+#
+# Beda dengan docker-compose.yml (development):
+#   - image ditarik dari GitHub Container Registry, tidak di-build di server
+#   - port database TIDAK dipublikasikan ke internet
+#   - API tidak dipublikasikan langsung; semua trafik lewat Caddy (HTTPS)
+#
+# Cara pakai di server:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: finance-db
+    restart: unless-stopped
+    # TIDAK ADA bagian "ports:" — ini disengaja.
+    # Menulis "5432:5432" akan membuka database ke seluruh internet, menembus
+    # firewall UFW sekalipun, karena Docker menulis aturan iptables sendiri.
+    # Container lain tetap bisa menghubunginya lewat nama host "db".
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    # Tag di-override oleh GitHub Actions saat deploy (lihat .github/workflows).
+    image: ${API_IMAGE:-ghcr.io/supramegod/personal-finance-tracker-backend:latest}
+    container_name: finance-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    # Juga tanpa "ports:" — hanya Caddy yang boleh menghubungi API.
+    expose:
+      - "8080"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: finance-caddy
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
