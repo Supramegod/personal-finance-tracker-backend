@@ -1,7 +1,15 @@
 # ============================================
 # Stage 1: Build
 # ============================================
-FROM golang:1.25-alpine AS builder
+# Pin ke patch yang sama persis dengan directive `go` di go.mod (1.25.3).
+# Kalau memakai tag minor "1.25-alpine" dan image-nya lebih lama dari 1.25.3,
+# Go mencoba mengunduh toolchain 1.25.3 saat build dan gagal di alpine
+# ("go: downloading go1.25.3 ..." lalu exit 1). Menyamakan versi image dengan
+# go.mod menghindarkan unduhan toolchain sama sekali.
+FROM golang:1.25.3-alpine AS builder
+
+# Jaring pengaman: kalau image sudah cukup, jangan pernah coba unduh toolchain.
+ENV GOTOOLCHAIN=local
 
 RUN apk add --no-cache git ca-certificates
 
