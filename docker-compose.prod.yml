@@ -1,11 +1,8 @@
-# docker-compose.prod.yml — dipakai DI SERVER, bukan di laptop.
+# docker-compose.prod.yml — dipakai DI PC yang jadi server (di rumah, di
+# belakang CGNAT/IndiHome). Akses publik lewat Cloudflare Tunnel, bukan
+# membuka port — jadi tidak butuh IP publik maupun port forwarding.
 #
-# Beda dengan docker-compose.yml (development):
-#   - image ditarik dari GitHub Container Registry, tidak di-build di server
-#   - port database TIDAK dipublikasikan ke internet
-#   - API tidak dipublikasikan langsung; semua trafik lewat Caddy (HTTPS)
-#
-# Cara pakai di server:
+# Cara pakai (dijalankan otomatis oleh self-hosted GitHub runner, atau manual):
 #   docker compose -f docker-compose.prod.yml pull
 #   docker compose -f docker-compose.prod.yml up -d
 
@@ -14,10 +11,8 @@ services:
     image: postgres:16-alpine
     container_name: finance-db
     restart: unless-stopped
-    # TIDAK ADA bagian "ports:" — ini disengaja.
-    # Menulis "5432:5432" akan membuka database ke seluruh internet, menembus
-    # firewall UFW sekalipun, karena Docker menulis aturan iptables sendiri.
-    # Container lain tetap bisa menghubunginya lewat nama host "db".
+    # Tanpa "ports:" — database tidak pernah terekspos ke host maupun internet.
+    # Container lain menghubunginya lewat nama host "db" di network compose.
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -31,14 +26,15 @@ services:
       retries: 5
 
   api:
-    # Tag di-override oleh GitHub Actions saat deploy (lihat .github/workflows).
+    # Tag di-set oleh GitHub Actions saat deploy (variabel API_IMAGE).
     image: ${API_IMAGE:-ghcr.io/supramegod/personal-finance-tracker-backend:latest}
     container_name: finance-api
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
-    # Juga tanpa "ports:" — hanya Caddy yang boleh menghubungi API.
+    # Tanpa "ports:" — API hanya dijangkau dari dalam network compose,
+    # baik oleh cloudflared (trafik publik) maupun healthcheck deploy.
     expose:
       - "8080"
     env_file:
@@ -46,23 +42,19 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
 
-  caddy:
-    image: caddy:2-alpine
-    container_name: finance-caddy
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: finance-tunnel
     restart: unless-stopped
     depends_on:
       - api
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+    # Tunnel "remotely-managed": pemetaan hostname -> http://api:8080 diatur
+    # di dashboard Cloudflare Zero Trust, bukan di file ini. cloudflared cukup
+    # butuh token tunnel-nya. Koneksi HANYA keluar ke Cloudflare, jadi tembus
+    # CGNAT tanpa buka port apa pun.
+    command: tunnel --no-autoupdate run
     environment:
-      API_DOMAIN: ${API_DOMAIN}
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
 
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:

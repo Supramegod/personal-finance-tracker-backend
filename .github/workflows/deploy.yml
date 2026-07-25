@@ -1,16 +1,14 @@
 # Alur: push ke main -> test -> build image -> push ke GitHub Container
-# Registry -> SSH ke server -> tarik image baru -> restart container.
+# Registry (GHCR). Berhenti di situ.
 #
-# Secret yang harus dibuat di GitHub (Settings > Secrets and variables >
-# Actions > New repository secret):
-#   SSH_HOST  — IP atau domain server
-#   SSH_USER  — user SSH di server (mis. deploy)
-#   SSH_KEY   — isi private key OpenSSH, termasuk baris BEGIN/END
-#   SSH_PORT  — opsional, default 22
+# TIDAK ada deploy otomatis: server adalah PC rumah di belakang CGNAT yang
+# tidak bisa di-SSH dari luar. Server menarik image dari GHCR dan menjalankan
+# Docker sendiri (lihat DEPLOY.md). Pipeline ini hanya menyediakan image baru.
 #
-# GITHUB_TOKEN dibuat otomatis, tidak perlu didaftarkan.
+# Tidak ada secret yang perlu didaftarkan — GITHUB_TOKEN dibuat otomatis dan
+# sudah cukup untuk push ke GHCR (asal Workflow permissions = Read and write).
 
-name: Deploy
+name: Build & Push
 
 on:
   push:
@@ -84,45 +82,6 @@ jobs:
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.ref.outputs.repo_lc }}:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.ref.outputs.repo_lc }}:buildcache,mode=max
 
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: SSH ke server dan restart container
-        uses: appleboy/ssh-action@v1.2.0
-        env:
-          API_IMAGE: ${{ needs.build-and-push.outputs.image }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          envs: API_IMAGE
-          script_stop: true # berhenti di perintah pertama yang gagal
-          script: |
-            set -e
-            cd ~/finance-backend
-
-            # API_IMAGE memakai tag SHA, bukan latest — supaya jelas versi mana
-            # yang jalan dan rollback tinggal menyetel ulang nilai ini.
-            # Compose mengambilnya dari environment shell, yang menang atas .env.
-            export API_IMAGE
-            echo "Deploy image: $API_IMAGE"
-
-            docker compose -f docker-compose.prod.yml pull api
-            docker compose -f docker-compose.prod.yml up -d
-
-            # Tunggu API benar-benar siap sebelum deploy dinyatakan berhasil.
-            # /ready ikut mem-ping database, jadi ini menguji koneksi DB juga.
-            for i in $(seq 1 30); do
-              if docker exec finance-api wget -qO- http://127.0.0.1:8080/ready >/dev/null 2>&1; then
-                echo "Deploy OK — API siap"
-                docker image prune -f
-                exit 0
-              fi
-              sleep 2
-            done
-
-            echo "Deploy GAGAL — API tidak siap dalam 60 detik. Log terakhir:"
-            docker compose -f docker-compose.prod.yml logs --tail 50 api
-            exit 1
+# Tidak ada job "deploy" otomatis. Server (PC rumah) menarik image dan
+# menjalankan Docker secara manual di direktori yang sudah disiapkan —
+# lihat DEPLOY.md. Pipeline ini berhenti setelah image masuk ke GHCR.
