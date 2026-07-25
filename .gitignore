@@ -20,9 +20,11 @@ k8s/*-secret.yaml
 # ─── Artefak build ────────────────────────────────
 build/
 tmp/
-# Binary hasil `go build` tanpa -o
-server
-setup
+# Binary hasil `go build` tanpa -o. WAJIB pakai garis miring depan (/server)
+# supaya hanya cocok dengan binary di root repo — tanpa itu pola "server"
+# juga cocok dengan DIREKTORI cmd/server/ dan menelan seluruh source-nya.
+/server
+/setup
 *.exe
 
 # ─── Test & coverage ──────────────────────────────
