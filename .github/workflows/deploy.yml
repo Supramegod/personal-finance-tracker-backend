@@ -71,8 +71,12 @@ jobs:
           tags: |
             ${{ steps.ref.outputs.image }}
             ${{ env.REGISTRY }}/${{ steps.ref.outputs.repo_lc }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Cache disimpan sebagai tag terpisah di GHCR, bukan type=gha.
+          # type=gha butuh akses Actions Cache API (scope actions:write) yang
+          # tidak dimiliki job ini; kegagalan cache-export-nya mematikan build.
+          # Registry-cache memakai izin packages:write yang sudah ada.
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.ref.outputs.repo_lc }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.ref.outputs.repo_lc }}:buildcache,mode=max
 
   deploy:
     needs: build-and-push
