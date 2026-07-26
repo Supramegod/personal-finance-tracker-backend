@@ -53,7 +53,20 @@ func (s *GroupService) ListForUser(userID string) ([]repository.Group, error) {
 // CreateUser membuat akun user baru (dilakukan oleh owner). Tidak otomatis
 // menempelkannya ke group mana pun — assignment dilakukan terpisah lewat
 // AddMember.
-func (s *GroupService) CreateUser(ownerUserID, email, password, fullName string) (*repository.User, error) {
+// CreateUser membuat akun user baru DAN langsung menambahkannya sebagai anggota
+// group aktif (activeGroupID). Tanpa ini, user baru tidak jadi anggota group mana
+// pun sehingga tidak muncul di "kolam" (ListManagedUsers) dan tak bisa di-drag.
+// Hanya owner group aktif yang boleh membuat user.
+func (s *GroupService) CreateUser(ownerUserID, activeGroupID, email, password, fullName string) (*repository.User, error) {
+	// Hanya owner group aktif yang boleh membuat & menempatkan user.
+	role, err := s.groupRepo.RoleOf(ownerUserID, activeGroupID)
+	if err != nil {
+		return nil, err
+	}
+	if role != "owner" {
+		return nil, errors.New("only owner can create users")
+	}
+
 	email = strings.TrimSpace(strings.ToLower(email))
 	fullName = strings.TrimSpace(fullName)
 
@@ -85,6 +98,12 @@ func (s *GroupService) CreateUser(ownerUserID, email, password, fullName string)
 		if strings.Contains(err.Error(), "duplicate key") {
 			return nil, errors.New("email already registered")
 		}
+		return nil, err
+	}
+
+	// Masukkan ke group aktif sebagai member (idempotent) agar langsung tampil
+	// di kolam dan bisa dipindah lewat drag-and-drop.
+	if err := s.groupRepo.AddMember(activeGroupID, user.ID, "member"); err != nil {
 		return nil, err
 	}
 

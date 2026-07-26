@@ -112,13 +112,14 @@ type createUserRequest struct {
 // @Router /users [post]
 func (h *GroupHandler) CreateUser(c *fiber.Ctx) error {
 	ownerUserID := c.Locals("user_id").(string)
+	activeGroupID := c.Locals("group_id").(string)
 
 	var req createUserRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
-	user, err := h.groupService.CreateUser(ownerUserID, req.Email, req.Password, req.FullName)
+	user, err := h.groupService.CreateUser(ownerUserID, activeGroupID, req.Email, req.Password, req.FullName)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
