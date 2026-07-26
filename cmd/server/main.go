@@ -68,6 +68,16 @@ Personal Finance Tracker API
 	// Set Swagger host dari config
 	docs.SwaggerInfo.Host = cfg.SwaggerHost
 
+	// Skema Swagger: di production API dilayani lewat HTTPS (Caddy/Cloudflare),
+	// jadi tombol "Try it out" harus memanggil https://. Default docs.go adalah
+	// "http" yang di halaman HTTPS akan diblokir browser (mixed content) dan
+	// muncul "Failed to fetch". Development lokal tetap http.
+	if cfg.Env == "production" {
+		docs.SwaggerInfo.Schemes = []string{"https"}
+	} else {
+		docs.SwaggerInfo.Schemes = []string{"http"}
+	}
+
 	// Database connection — pgxpool langsung (pola user)
 	dbCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	connPool, err := pgxpool.New(dbCtx, cfg.DatabaseURL)
