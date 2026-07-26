@@ -20,6 +20,7 @@ func SetupRoutes(
 	categoryService *service.CategoryService,
 	transactionService *service.TransactionService,
 	summaryService *service.SummaryService,
+	installmentService *service.InstallmentService,
 ) {
 	// ─── Public routes ──────────────────────────────────────────────
 	authHandler := handler.NewAuthHandler(authService)
@@ -48,5 +49,13 @@ func SetupRoutes(
 		summaryHandler := handler.NewSummaryHandler(summaryService)
 		protected.Get("/summary/balance", summaryHandler.Balance)
 		protected.Get("/summary/report", summaryHandler.Report)
+
+		// Installments / Cicilan
+		installmentHandler := handler.NewInstallmentHandler(installmentService)
+		protected.Get("/installments", installmentHandler.List)
+		protected.Post("/installments", installmentHandler.Create)
+		protected.Get("/installments/:id", installmentHandler.GetByID)
+		protected.Post("/installments/:id/pay", installmentHandler.Pay)
+		protected.Delete("/installments/:id", installmentHandler.Delete)
 	}
 }
