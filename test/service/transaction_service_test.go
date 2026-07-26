@@ -8,6 +8,7 @@ import (
 
 func TestCreateIncomeTransaction(t *testing.T) {
 	tx, err := testTxSvc.Create(service.CreateTransactionInput{
+		GroupID:         testGroupID,
 		UserID:          testUserID,
 		CategoryID:      testCatID,
 		Type:            "income",
@@ -31,6 +32,7 @@ func TestCreateIncomeTransaction(t *testing.T) {
 
 func TestCreateExpenseTransaction(t *testing.T) {
 	tx, err := testTxSvc.Create(service.CreateTransactionInput{
+		GroupID:         testGroupID,
 		UserID:          testUserID,
 		CategoryID:      testCatID,
 		Type:            "expense",
@@ -48,6 +50,7 @@ func TestCreateExpenseTransaction(t *testing.T) {
 
 func TestCreateTransactionInvalidAmount(t *testing.T) {
 	_, err := testTxSvc.Create(service.CreateTransactionInput{
+		GroupID:         testGroupID,
 		UserID:          testUserID,
 		CategoryID:      testCatID,
 		Type:            "expense",
@@ -61,6 +64,7 @@ func TestCreateTransactionInvalidAmount(t *testing.T) {
 
 func TestCreateTransactionNegativeAmount(t *testing.T) {
 	_, err := testTxSvc.Create(service.CreateTransactionInput{
+		GroupID:         testGroupID,
 		UserID:          testUserID,
 		CategoryID:      testCatID,
 		Type:            "expense",
@@ -74,6 +78,7 @@ func TestCreateTransactionNegativeAmount(t *testing.T) {
 
 func TestCreateTransactionInvalidType(t *testing.T) {
 	_, err := testTxSvc.Create(service.CreateTransactionInput{
+		GroupID:         testGroupID,
 		UserID:          testUserID,
 		CategoryID:      testCatID,
 		Type:            "invalid",
@@ -87,6 +92,7 @@ func TestCreateTransactionInvalidType(t *testing.T) {
 
 func TestCreateTransactionMissingDate(t *testing.T) {
 	_, err := testTxSvc.Create(service.CreateTransactionInput{
+		GroupID:    testGroupID,
 		UserID:     testUserID,
 		CategoryID: testCatID,
 		Type:       "income",
@@ -99,6 +105,7 @@ func TestCreateTransactionMissingDate(t *testing.T) {
 
 func TestCreateTransactionInvalidDateFormat(t *testing.T) {
 	_, err := testTxSvc.Create(service.CreateTransactionInput{
+		GroupID:         testGroupID,
 		UserID:          testUserID,
 		CategoryID:      testCatID,
 		Type:            "income",
@@ -112,7 +119,7 @@ func TestCreateTransactionInvalidDateFormat(t *testing.T) {
 
 func TestListTransactions(t *testing.T) {
 	transactions, total, err := testTxSvc.List(service.ListTransactionsInput{
-		UserID: testUserID,
+		GroupID: testGroupID,
 		Page:   1,
 		Limit:  10,
 	})
@@ -129,7 +136,7 @@ func TestListTransactions(t *testing.T) {
 
 func TestListTransactionsFilterByType(t *testing.T) {
 	transactions, total, err := testTxSvc.List(service.ListTransactionsInput{
-		UserID: testUserID,
+		GroupID: testGroupID,
 		Type:   "income",
 		Page:   1,
 		Limit:  10,
@@ -149,6 +156,7 @@ func TestListTransactionsFilterByType(t *testing.T) {
 
 func TestUpdateTransaction(t *testing.T) {
 	tx, err := testTxSvc.Create(service.CreateTransactionInput{
+		GroupID:         testGroupID,
 		UserID:          testUserID,
 		CategoryID:      testCatID,
 		Type:            "income",
@@ -162,7 +170,7 @@ func TestUpdateTransaction(t *testing.T) {
 
 	updated, err := testTxSvc.Update(service.UpdateTransactionInput{
 		ID:              tx.ID,
-		UserID:          testUserID,
+		GroupID:         testGroupID,
 		CategoryID:      testCatID,
 		Type:            "income",
 		Amount:          2000000,
@@ -179,6 +187,7 @@ func TestUpdateTransaction(t *testing.T) {
 
 func TestDeleteTransaction(t *testing.T) {
 	tx, err := testTxSvc.Create(service.CreateTransactionInput{
+		GroupID:         testGroupID,
 		UserID:          testUserID,
 		CategoryID:      testCatID,
 		Type:            "expense",
@@ -190,12 +199,12 @@ func TestDeleteTransaction(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	err = testTxSvc.Delete(tx.ID, testUserID)
+	err = testTxSvc.Delete(tx.ID, testGroupID)
 	if err != nil {
 		t.Fatalf("Delete failed: %v", err)
 	}
 
-	_, err = testTxSvc.GetByID(tx.ID, testUserID)
+	_, err = testTxSvc.GetByID(tx.ID, testGroupID)
 	if err == nil {
 		t.Error("Should not find deleted transaction")
 	}
@@ -203,6 +212,7 @@ func TestDeleteTransaction(t *testing.T) {
 
 func TestGetTransactionByID(t *testing.T) {
 	tx, err := testTxSvc.Create(service.CreateTransactionInput{
+		GroupID:         testGroupID,
 		UserID:          testUserID,
 		CategoryID:      testCatID,
 		Type:            "income",
@@ -214,7 +224,7 @@ func TestGetTransactionByID(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	found, err := testTxSvc.GetByID(tx.ID, testUserID)
+	found, err := testTxSvc.GetByID(tx.ID, testGroupID)
 	if err != nil {
 		t.Fatalf("GetByID failed: %v", err)
 	}

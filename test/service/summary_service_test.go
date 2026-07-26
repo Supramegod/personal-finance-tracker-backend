@@ -7,7 +7,7 @@ import (
 )
 
 func TestGetBalance(t *testing.T) {
-	balance, err := testSummarySvc.GetBalance(testUserID)
+	balance, err := testSummarySvc.GetBalance(testGroupID)
 	if err != nil {
 		t.Fatalf("Get balance failed: %v", err)
 	}
@@ -17,7 +17,7 @@ func TestGetBalance(t *testing.T) {
 }
 
 func TestGetReportDaily(t *testing.T) {
-	report, err := testSummarySvc.GetReport(testUserID, "daily", "2026-06-01", "2026-06-30")
+	report, err := testSummarySvc.GetReport(testGroupID, "daily", "2026-06-01", "2026-06-30")
 	if err != nil {
 		t.Fatalf("Get daily report failed: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestGetReportDaily(t *testing.T) {
 }
 
 func TestGetReportWeekly(t *testing.T) {
-	report, err := testSummarySvc.GetReport(testUserID, "weekly", "2026-06-01", "2026-06-30")
+	report, err := testSummarySvc.GetReport(testGroupID, "weekly", "2026-06-01", "2026-06-30")
 	if err != nil {
 		t.Fatalf("Get weekly report failed: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestGetReportWeekly(t *testing.T) {
 }
 
 func TestGetReportMonthly(t *testing.T) {
-	report, err := testSummarySvc.GetReport(testUserID, "monthly", "2026-01-01", "2026-12-31")
+	report, err := testSummarySvc.GetReport(testGroupID, "monthly", "2026-01-01", "2026-12-31")
 	if err != nil {
 		t.Fatalf("Get monthly report failed: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestGetReportMonthly(t *testing.T) {
 }
 
 func TestGetReportNoData(t *testing.T) {
-	report, err := testSummarySvc.GetReport(testUserID, "daily", "2025-01-01", "2025-01-31")
+	report, err := testSummarySvc.GetReport(testGroupID, "daily", "2025-01-01", "2025-01-31")
 	if err != nil {
 		t.Fatalf("Get report for empty period failed: %v", err)
 	}
@@ -65,12 +65,13 @@ func TestGetReportNoData(t *testing.T) {
 }
 
 func TestBalanceAfterNewTransaction(t *testing.T) {
-	balanceBefore, err := testSummarySvc.GetBalance(testUserID)
+	balanceBefore, err := testSummarySvc.GetBalance(testGroupID)
 	if err != nil {
 		t.Fatalf("Get balance before: %v", err)
 	}
 
 	tx, err := testTxSvc.Create(service.CreateTransactionInput{
+		GroupID:         testGroupID,
 		UserID:          testUserID,
 		CategoryID:      testCatID,
 		Type:            "income",
@@ -82,7 +83,7 @@ func TestBalanceAfterNewTransaction(t *testing.T) {
 		t.Fatalf("Create transaction: %v", err)
 	}
 
-	balanceAfter, err := testSummarySvc.GetBalance(testUserID)
+	balanceAfter, err := testSummarySvc.GetBalance(testGroupID)
 	if err != nil {
 		t.Fatalf("Get balance after: %v", err)
 	}
@@ -92,5 +93,5 @@ func TestBalanceAfterNewTransaction(t *testing.T) {
 		t.Errorf("Expected balance %f, got %f", expected, balanceAfter.Balance)
 	}
 
-	testTxSvc.Delete(tx.ID, testUserID)
+	testTxSvc.Delete(tx.ID, testGroupID)
 }

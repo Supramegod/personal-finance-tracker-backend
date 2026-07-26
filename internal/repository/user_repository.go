@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,6 +14,22 @@ type UserRepository struct {
 
 func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
 	return &UserRepository{pool: pool}
+}
+
+// Create menyimpan user baru ke tabel users. password_hash diharapkan
+// sudah di-hash oleh caller (service). Mengembalikan id, created_at,
+// updated_at hasil generate DB via RETURNING.
+func (r *UserRepository) Create(u *User) error {
+	err := r.pool.QueryRow(context.Background(),
+		`INSERT INTO users (email, password_hash, full_name)
+		 VALUES ($1, $2, $3)
+		 RETURNING id, created_at, updated_at`,
+		u.Email, u.PasswordHash, u.FullName).Scan(
+		&u.ID, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("create user: %w", err)
+	}
+	return nil
 }
 
 func (r *UserRepository) FindByEmail(email string) (*User, error) {

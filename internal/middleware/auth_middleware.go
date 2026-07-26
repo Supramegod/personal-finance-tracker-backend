@@ -35,6 +35,7 @@ func AuthMiddleware() fiber.Handler {
 
 		c.Locals("user_id", claims.UserID)
 		c.Locals("email", claims.Email)
+		c.Locals("group_id", claims.GroupID)
 		return c.Next()
 	}
 }

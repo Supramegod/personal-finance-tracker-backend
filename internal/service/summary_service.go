@@ -16,8 +16,8 @@ type BalanceResponse struct {
 	Balance float64 `json:"balance"`
 }
 
-func (s *SummaryService) GetBalance(userID string) (*BalanceResponse, error) {
-	balance, err := s.repo.GetBalance(userID)
+func (s *SummaryService) GetBalance(groupID string) (*BalanceResponse, error) {
+	balance, err := s.repo.GetBalance(groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -31,8 +31,8 @@ type ReportResponse struct {
 	Net          float64                `json:"net"`
 }
 
-func (s *SummaryService) GetReport(userID, period, from, to string) (*ReportResponse, error) {
-	rows, totalIncome, totalExpense, err := s.repo.GetReport(userID, period, from, to)
+func (s *SummaryService) GetReport(groupID, period, from, to string) (*ReportResponse, error) {
+	rows, totalIncome, totalExpense, err := s.repo.GetReport(groupID, period, from, to)
 	if err != nil {
 		return nil, err
 	}

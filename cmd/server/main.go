@@ -107,13 +107,15 @@ Personal Finance Tracker API
 	summaryRepo := repository.NewSummaryRepository(connPool)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(connPool)
 	installmentRepo := repository.NewInstallmentRepository(connPool)
+	groupRepo := repository.NewGroupRepository(connPool)
 
 	// Services
-	authService := service.NewAuthService(userRepo, categoryRepo, refreshTokenRepo)
+	authService := service.NewAuthService(userRepo, categoryRepo, refreshTokenRepo, groupRepo)
 	categoryService := service.NewCategoryService(categoryRepo)
 	transactionService := service.NewTransactionService(transactionRepo, categoryRepo)
 	summaryService := service.NewSummaryService(summaryRepo)
 	installmentService := service.NewInstallmentService(installmentRepo, categoryRepo)
+	groupService := service.NewGroupService(groupRepo, userRepo)
 
 	// Background goroutines
 	go StartTokenCleanup(refreshTokenRepo)
@@ -148,7 +150,7 @@ Personal Finance Tracker API
 	})
 
 	// API routes
-	router.SetupRoutes(app, authService, categoryService, transactionService, summaryService, installmentService)
+	router.SetupRoutes(app, authService, categoryService, transactionService, summaryService, installmentService, groupService)
 
 	// Signal handling goroutine (pola user)
 	go func() {

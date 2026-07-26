@@ -15,21 +15,22 @@ func NewCategoryService(repo *repository.CategoryRepository) *CategoryService {
 	return &CategoryService{repo: repo}
 }
 
-func (s *CategoryService) List(userID, categoryType string) ([]repository.Category, error) {
+func (s *CategoryService) List(groupID, categoryType string) ([]repository.Category, error) {
 	if categoryType != "" {
 		categoryType = strings.ToLower(categoryType)
 		if categoryType != "income" && categoryType != "expense" {
 			return nil, errors.New("type must be 'income' or 'expense'")
 		}
 	}
-	return s.repo.FindByUserID(userID, categoryType)
+	return s.repo.FindByGroupID(groupID, categoryType)
 }
 
 type CreateCategoryInput struct {
-	UserID string
-	Name   string
-	Type   string
-	Icon   string
+	GroupID string
+	UserID  string
+	Name    string
+	Type    string
+	Icon    string
 }
 
 func (s *CategoryService) Create(input CreateCategoryInput) (*repository.Category, error) {
@@ -44,10 +45,11 @@ func (s *CategoryService) Create(input CreateCategoryInput) (*repository.Categor
 	}
 
 	category := &repository.Category{
-		UserID: input.UserID,
-		Name:   input.Name,
-		Type:   input.Type,
-		Icon:   input.Icon,
+		GroupID: input.GroupID,
+		UserID:  input.UserID,
+		Name:    input.Name,
+		Type:    input.Type,
+		Icon:    input.Icon,
 	}
 
 	if err := s.repo.Create(category); err != nil {

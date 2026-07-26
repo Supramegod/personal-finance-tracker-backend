@@ -18,7 +18,7 @@ func NewTransactionService(repo *repository.TransactionRepository, categoryRepo 
 }
 
 type ListTransactionsInput struct {
-	UserID     string
+	GroupID    string
 	From       string
 	To         string
 	CategoryID string
@@ -36,7 +36,7 @@ func (s *TransactionService) List(input ListTransactionsInput) ([]repository.Tra
 	}
 
 	return s.repo.List(repository.ListTransactionsParams{
-		UserID:     input.UserID,
+		GroupID:    input.GroupID,
 		From:       input.From,
 		To:         input.To,
 		CategoryID: input.CategoryID,
@@ -47,6 +47,7 @@ func (s *TransactionService) List(input ListTransactionsInput) ([]repository.Tra
 }
 
 type CreateTransactionInput struct {
+	GroupID         string
 	UserID          string
 	CategoryID      string
 	Type            string
@@ -70,9 +71,9 @@ func (s *TransactionService) Create(input CreateTransactionInput) (*repository.T
 		return nil, errors.New("category_id is required")
 	}
 
-	// Pastikan category_id valid dan milik user yang sedang login,
+	// Pastikan category_id valid dan milik kelompok yang sedang login,
 	// serta type-nya sesuai dengan type transaksi.
-	category, err := s.categoryRepo.FindByIDAndUserID(input.CategoryID, input.UserID)
+	category, err := s.categoryRepo.FindByIDAndGroupID(input.CategoryID, input.GroupID)
 	if err != nil {
 		return nil, errors.New("category not found")
 	}
@@ -90,6 +91,7 @@ func (s *TransactionService) Create(input CreateTransactionInput) (*repository.T
 	}
 
 	t := &repository.Transaction{
+		GroupID:         input.GroupID,
 		UserID:          input.UserID,
 		CategoryID:      input.CategoryID,
 		Type:            input.Type,
@@ -105,13 +107,13 @@ func (s *TransactionService) Create(input CreateTransactionInput) (*repository.T
 	return t, nil
 }
 
-func (s *TransactionService) GetByID(id, userID string) (*repository.Transaction, error) {
-	return s.repo.FindByID(id, userID)
+func (s *TransactionService) GetByID(id, groupID string) (*repository.Transaction, error) {
+	return s.repo.FindByID(id, groupID)
 }
 
 type UpdateTransactionInput struct {
 	ID              string
-	UserID          string
+	GroupID         string
 	CategoryID      string
 	Type            string
 	Amount          float64
@@ -121,7 +123,7 @@ type UpdateTransactionInput struct {
 
 func (s *TransactionService) Update(input UpdateTransactionInput) (*repository.Transaction, error) {
 	// Check ownership
-	existing, err := s.repo.FindByID(input.ID, input.UserID)
+	existing, err := s.repo.FindByID(input.ID, input.GroupID)
 	if err != nil {
 		return nil, errors.New("transaction not found")
 	}
@@ -140,9 +142,9 @@ func (s *TransactionService) Update(input UpdateTransactionInput) (*repository.T
 		return nil, errors.New("category_id is required")
 	}
 
-	// Pastikan category_id valid dan milik user yang sedang login,
+	// Pastikan category_id valid dan milik kelompok yang sedang login,
 	// serta type-nya sesuai dengan type transaksi.
-	category, err := s.categoryRepo.FindByIDAndUserID(input.CategoryID, input.UserID)
+	category, err := s.categoryRepo.FindByIDAndGroupID(input.CategoryID, input.GroupID)
 	if err != nil {
 		return nil, errors.New("category not found")
 	}
@@ -159,6 +161,7 @@ func (s *TransactionService) Update(input UpdateTransactionInput) (*repository.T
 		return nil, errors.New("invalid transaction_date format, use YYYY-MM-DD")
 	}
 
+	existing.GroupID = input.GroupID
 	existing.CategoryID = input.CategoryID
 	existing.Type = input.Type
 	existing.Amount = input.Amount
@@ -172,7 +175,7 @@ func (s *TransactionService) Update(input UpdateTransactionInput) (*repository.T
 	return existing, nil
 }
 
-func (s *TransactionService) GetCalendarMonth(userID, month string) ([]repository.CalendarDay, error) {
+func (s *TransactionService) GetCalendarMonth(groupID, month string) ([]repository.CalendarDay, error) {
 	// Jika month kosong, default ke bulan berjalan
 	if month == "" {
 		now := time.Now()
@@ -183,9 +186,9 @@ func (s *TransactionService) GetCalendarMonth(userID, month string) ([]repositor
 		return nil, errors.New("invalid month format, use YYYY-MM")
 	}
 
-	return s.repo.GetCalendarMonth(userID, month)
+	return s.repo.GetCalendarMonth(groupID, month)
 }
 
-func (s *TransactionService) Delete(id, userID string) error {
-	return s.repo.Delete(id, userID)
+func (s *TransactionService) Delete(id, groupID string) error {
+	return s.repo.Delete(id, groupID)
 }

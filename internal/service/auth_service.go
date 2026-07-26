@@ -12,24 +12,29 @@ type AuthService struct {
 	userRepo     *repository.UserRepository
 	categoryRepo *repository.CategoryRepository
 	refreshRepo  *repository.RefreshTokenRepository
+	groupRepo    *repository.GroupRepository
 }
 
 func NewAuthService(
 	userRepo *repository.UserRepository,
 	categoryRepo *repository.CategoryRepository,
 	refreshRepo *repository.RefreshTokenRepository,
+	groupRepo *repository.GroupRepository,
 ) *AuthService {
 	return &AuthService{
 		userRepo:     userRepo,
 		categoryRepo: categoryRepo,
 		refreshRepo:  refreshRepo,
+		groupRepo:    groupRepo,
 	}
 }
 
 type LoginResponse struct {
-	AccessToken  string          `json:"access_token"`
-	RefreshToken string          `json:"refresh_token"`
-	User         repository.User `json:"user"`
+	AccessToken   string             `json:"access_token"`
+	RefreshToken  string             `json:"refresh_token"`
+	User          repository.User    `json:"user"`
+	ActiveGroupID string             `json:"active_group_id"`
+	Groups        []repository.Group `json:"groups"`
 }
 
 func (s *AuthService) Login(email, password string) (*LoginResponse, error) {
@@ -46,12 +51,16 @@ func (s *AuthService) Login(email, password string) (*LoginResponse, error) {
 		return nil, errors.New("invalid email or password")
 	}
 
-	accessToken, err := auth.GenerateAccessToken(user.ID, user.Email)
+	// Tentukan group aktif default. Bila user belum punya group, tetap lanjut
+	// dengan groupID kosong (scope kosong) — token tetap terbit.
+	groupID, _ := s.groupRepo.DefaultGroupForUser(user.ID)
+
+	accessToken, err := auth.GenerateAccessToken(user.ID, user.Email, groupID)
 	if err != nil {
 		return nil, errors.New("failed to generate access token")
 	}
 
-	refreshToken, err := auth.GenerateRefreshToken(user.ID, user.Email)
+	refreshToken, err := auth.GenerateRefreshToken(user.ID, user.Email, groupID)
 	if err != nil {
 		return nil, errors.New("failed to generate refresh token")
 	}
@@ -65,10 +74,14 @@ func (s *AuthService) Login(email, password string) (*LoginResponse, error) {
 		return nil, errors.New("failed to store refresh token")
 	}
 
+	groups, _ := s.groupRepo.ListForUser(user.ID)
+
 	return &LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		User:         *user,
+		AccessToken:   accessToken,
+		RefreshToken:  refreshToken,
+		User:          *user,
+		ActiveGroupID: groupID,
+		Groups:        groups,
 	}, nil
 }
 
@@ -102,13 +115,17 @@ func (s *AuthService) Refresh(refreshToken string) (*LoginResponse, error) {
 		return nil, errors.New("user not found")
 	}
 
+	// Pertahankan scope group dari refresh token lama — refresh tidak boleh
+	// mengubah kelompok aktif.
+	groupID := claims.GroupID
+
 	// Generate new tokens
-	accessToken, err := auth.GenerateAccessToken(user.ID, user.Email)
+	accessToken, err := auth.GenerateAccessToken(user.ID, user.Email, groupID)
 	if err != nil {
 		return nil, errors.New("failed to generate access token")
 	}
 
-	newRefreshToken, err := auth.GenerateRefreshToken(user.ID, user.Email)
+	newRefreshToken, err := auth.GenerateRefreshToken(user.ID, user.Email, groupID)
 	if err != nil {
 		return nil, errors.New("failed to generate refresh token")
 	}
@@ -120,10 +137,62 @@ func (s *AuthService) Refresh(refreshToken string) (*LoginResponse, error) {
 		return nil, errors.New("failed to store new refresh token")
 	}
 
+	groups, _ := s.groupRepo.ListForUser(user.ID)
+
 	return &LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: newRefreshToken,
-		User:         *user,
+		AccessToken:   accessToken,
+		RefreshToken:  newRefreshToken,
+		User:          *user,
+		ActiveGroupID: groupID,
+		Groups:        groups,
+	}, nil
+}
+
+// SwitchGroup memindahkan kelompok aktif user ke groupID (harus anggota),
+// menerbitkan access & refresh token baru dengan scope group tersebut, dan
+// menyimpan hash refresh token baru (pola sama dengan Login).
+func (s *AuthService) SwitchGroup(userID, groupID string) (*LoginResponse, error) {
+	if groupID == "" {
+		return nil, errors.New("group_id is required")
+	}
+
+	isMember, err := s.groupRepo.IsMember(userID, groupID)
+	if err != nil {
+		return nil, errors.New("failed to verify membership")
+	}
+	if !isMember {
+		return nil, errors.New("not a member of this group")
+	}
+
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	accessToken, err := auth.GenerateAccessToken(user.ID, user.Email, groupID)
+	if err != nil {
+		return nil, errors.New("failed to generate access token")
+	}
+
+	refreshToken, err := auth.GenerateRefreshToken(user.ID, user.Email, groupID)
+	if err != nil {
+		return nil, errors.New("failed to generate refresh token")
+	}
+
+	tokenHash := s.refreshRepo.HashToken(refreshToken)
+	expiresAt := time.Now().Add(auth.RefreshTokenExpiry())
+	if err := s.refreshRepo.Store(user.ID, tokenHash, expiresAt); err != nil {
+		return nil, errors.New("failed to store refresh token")
+	}
+
+	groups, _ := s.groupRepo.ListForUser(user.ID)
+
+	return &LoginResponse{
+		AccessToken:   accessToken,
+		RefreshToken:  refreshToken,
+		User:          *user,
+		ActiveGroupID: groupID,
+		Groups:        groups,
 	}, nil
 }
 

@@ -21,6 +21,7 @@ func SetupRoutes(
 	transactionService *service.TransactionService,
 	summaryService *service.SummaryService,
 	installmentService *service.InstallmentService,
+	groupService *service.GroupService,
 ) {
 	// ─── Public routes ──────────────────────────────────────────────
 	authHandler := handler.NewAuthHandler(authService)
@@ -31,6 +32,17 @@ func SetupRoutes(
 	// ─── Protected routes (memerlukan JWT) ──────────────────────────
 	protected := app.Group("/api/v1", middleware.AuthMiddleware())
 	{
+		// Groups & multi-user (kelompok)
+		groupHandler := handler.NewGroupHandler(groupService, authService)
+		protected.Post("/auth/switch-group", groupHandler.SwitchGroup)
+		protected.Get("/groups", groupHandler.List)
+		protected.Post("/groups", groupHandler.Create)
+		protected.Get("/users", groupHandler.ListManagedUsers)
+		protected.Post("/users", groupHandler.CreateUser)
+		protected.Get("/groups/:id/members", groupHandler.ListMembers)
+		protected.Post("/groups/:id/members", groupHandler.AddMember)
+		protected.Delete("/groups/:id/members/:userId", groupHandler.RemoveMember)
+
 		// Categories
 		categoryHandler := handler.NewCategoryHandler(categoryService)
 		protected.Get("/categories", categoryHandler.List)

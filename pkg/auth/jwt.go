@@ -21,6 +21,10 @@ const (
 type Claims struct {
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`
+	// GroupID adalah kelompok aktif (scope kepemilikan data) dari token ini.
+	// Semua query data difilter berdasarkan group_id ini. Bisa kosong bila
+	// user belum punya group.
+	GroupID string `json:"group_id"`
 	// TokenType membedakan access token dan refresh token. Token lama
 	// (sebelum field ini ada) tidak punya claim ini dan harus dianggap
 	// tidak valid, bukan default ke "access".
@@ -28,7 +32,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func GenerateAccessToken(userID, email string) (string, error) {
+func GenerateAccessToken(userID, email, groupID string) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		return "", fmt.Errorf("JWT_SECRET is required")
@@ -39,6 +43,7 @@ func GenerateAccessToken(userID, email string) (string, error) {
 	claims := Claims{
 		UserID:    userID,
 		Email:     email,
+		GroupID:   groupID,
 		TokenType: TokenTypeAccess,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiry)),
@@ -51,7 +56,7 @@ func GenerateAccessToken(userID, email string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
-func GenerateRefreshToken(userID, email string) (string, error) {
+func GenerateRefreshToken(userID, email, groupID string) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		return "", fmt.Errorf("JWT_SECRET is required")
@@ -62,6 +67,7 @@ func GenerateRefreshToken(userID, email string) (string, error) {
 	claims := Claims{
 		UserID:    userID,
 		Email:     email,
+		GroupID:   groupID,
 		TokenType: TokenTypeRefresh,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiry)),

@@ -18,7 +18,7 @@ func NewTransactionRepository(pool *pgxpool.Pool) *TransactionRepository {
 }
 
 type ListTransactionsParams struct {
-	UserID     string
+	GroupID    string
 	From       string
 	To         string
 	CategoryID string
@@ -35,8 +35,8 @@ func (r *TransactionRepository) List(params ListTransactionsParams) ([]Transacti
 		params.Page = 1
 	}
 
-	where := []string{"t.user_id = $1", "t.deleted_at IS NULL"}
-	args := []interface{}{params.UserID}
+	where := []string{"t.group_id = $1", "t.deleted_at IS NULL"}
+	args := []interface{}{params.GroupID}
 	argIdx := 2
 
 	if params.From != "" {
@@ -104,24 +104,24 @@ func (r *TransactionRepository) List(params ListTransactionsParams) ([]Transacti
 
 func (r *TransactionRepository) Create(t *Transaction) error {
 	err := r.pool.QueryRow(context.Background(),
-		`INSERT INTO transactions (user_id, category_id, type, amount, transaction_date, note)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO transactions (group_id, user_id, category_id, type, amount, transaction_date, note)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id, created_at, updated_at`,
-		t.UserID, t.CategoryID, t.Type, t.Amount, t.TransactionDate, t.Note).Scan(
+		t.GroupID, t.UserID, t.CategoryID, t.Type, t.Amount, t.TransactionDate, t.Note).Scan(
 		&t.ID, &t.CreatedAt, &t.UpdatedAt)
 	return err
 }
 
-func (r *TransactionRepository) FindByID(id, userID string) (*Transaction, error) {
+func (r *TransactionRepository) FindByID(id, groupID string) (*Transaction, error) {
 	t := &Transaction{}
 	err := r.pool.QueryRow(context.Background(),
-		`SELECT t.id, t.user_id, t.category_id, t.type, t.amount,
+		`SELECT t.id, t.group_id, t.user_id, t.category_id, t.type, t.amount,
 				t.transaction_date, t.note, t.created_at, t.updated_at,
 				COALESCE(c.name, '') as category_name
 		 FROM transactions t
 		 LEFT JOIN categories c ON t.category_id = c.id
-		 WHERE t.id = $1 AND t.user_id = $2 AND t.deleted_at IS NULL`, id, userID).Scan(
-		&t.ID, &t.UserID, &t.CategoryID, &t.Type, &t.Amount,
+		 WHERE t.id = $1 AND t.group_id = $2 AND t.deleted_at IS NULL`, id, groupID).Scan(
+		&t.ID, &t.GroupID, &t.UserID, &t.CategoryID, &t.Type, &t.Amount,
 		&t.TransactionDate, &t.Note, &t.CreatedAt, &t.UpdatedAt, &t.CategoryName)
 	if err != nil {
 		return nil, err
@@ -133,14 +133,14 @@ func (r *TransactionRepository) Update(t *Transaction) error {
 	_, err := r.pool.Exec(context.Background(),
 		`UPDATE transactions
 		 SET category_id = $1, type = $2, amount = $3, transaction_date = $4, note = $5
-		 WHERE id = $6 AND user_id = $7`,
-		t.CategoryID, t.Type, t.Amount, t.TransactionDate, t.Note, t.ID, t.UserID)
+		 WHERE id = $6 AND group_id = $7`,
+		t.CategoryID, t.Type, t.Amount, t.TransactionDate, t.Note, t.ID, t.GroupID)
 	return err
 }
 
-func (r *TransactionRepository) Delete(id, userID string) error {
+func (r *TransactionRepository) Delete(id, groupID string) error {
 	_, err := r.pool.Exec(context.Background(),
-		`UPDATE transactions SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, id, userID)
+		`UPDATE transactions SET deleted_at = NOW() WHERE id = $1 AND group_id = $2 AND deleted_at IS NULL`, id, groupID)
 	return err
 }
 
@@ -151,7 +151,7 @@ type CalendarDay struct {
 	Count        int     `json:"count"`
 }
 
-func (r *TransactionRepository) GetCalendarMonth(userID, month string) ([]CalendarDay, error) {
+func (r *TransactionRepository) GetCalendarMonth(groupID, month string) ([]CalendarDay, error) {
 	// Parse month "2026-06" → firstDate "2026-06-01", lastDate "2026-06-30"
 	firstDate := month + "-01"
 	t, err := time.Parse("2006-01-02", firstDate)
@@ -167,7 +167,7 @@ func (r *TransactionRepository) GetCalendarMonth(userID, month string) ([]Calend
 			COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as total_expense,
 			COUNT(*) as count
 		FROM transactions
-		WHERE user_id = $1
+		WHERE group_id = $1
 			AND deleted_at IS NULL
 			AND transaction_date >= $2
 			AND transaction_date <= $3
@@ -175,7 +175,7 @@ func (r *TransactionRepository) GetCalendarMonth(userID, month string) ([]Calend
 		ORDER BY transaction_date DESC
 	`
 
-	rows, err := r.pool.Query(context.Background(), query, userID, firstDate, lastDate)
+	rows, err := r.pool.Query(context.Background(), query, groupID, firstDate, lastDate)
 	if err != nil {
 		return nil, fmt.Errorf("query calendar month %s: %w", month, err)
 	}
@@ -203,6 +203,7 @@ func (r *TransactionRepository) GetCalendarMonth(userID, month string) ([]Calend
 
 type Transaction struct {
 	ID              string     `json:"id"`
+	GroupID         string     `json:"group_id"`
 	UserID          string     `json:"user_id"`
 	CategoryID      string     `json:"category_id"`
 	Type            string     `json:"type"`

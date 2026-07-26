@@ -26,10 +26,10 @@ func NewCategoryHandler(categoryService *service.CategoryService) *CategoryHandl
 // @Failure 401 {object} map[string]string
 // @Router /categories [get]
 func (h *CategoryHandler) List(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(string)
+	groupID := c.Locals("group_id").(string)
 	categoryType := c.Query("type")
 
-	categories, err := h.categoryService.List(userID, categoryType)
+	categories, err := h.categoryService.List(groupID, categoryType)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
@@ -65,6 +65,7 @@ type createCategoryRequest struct {
 // @Failure 401 {object} map[string]string
 // @Router /categories [post]
 func (h *CategoryHandler) Create(c *fiber.Ctx) error {
+	groupID := c.Locals("group_id").(string)
 	userID := c.Locals("user_id").(string)
 
 	var req createCategoryRequest
@@ -75,10 +76,11 @@ func (h *CategoryHandler) Create(c *fiber.Ctx) error {
 	}
 
 	category, err := h.categoryService.Create(service.CreateCategoryInput{
-		UserID: userID,
-		Name:   req.Name,
-		Type:   req.Type,
-		Icon:   req.Icon,
+		GroupID: groupID,
+		UserID:  userID,
+		Name:    req.Name,
+		Type:    req.Type,
+		Icon:    req.Icon,
 	})
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

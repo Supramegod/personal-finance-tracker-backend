@@ -24,9 +24,9 @@ func NewSummaryHandler(summaryService *service.SummaryService) *SummaryHandler {
 // @Failure 500 {object} map[string]string
 // @Router /summary/balance [get]
 func (h *SummaryHandler) Balance(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(string)
+	groupID := c.Locals("group_id").(string)
 
-	result, err := h.summaryService.GetBalance(userID)
+	result, err := h.summaryService.GetBalance(groupID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to get balance",
@@ -49,7 +49,7 @@ func (h *SummaryHandler) Balance(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]string
 // @Router /summary/report [get]
 func (h *SummaryHandler) Report(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(string)
+	groupID := c.Locals("group_id").(string)
 
 	period := c.Query("period", "monthly")
 	from := c.Query("from")
@@ -61,7 +61,7 @@ func (h *SummaryHandler) Report(c *fiber.Ctx) error {
 		})
 	}
 
-	result, err := h.summaryService.GetReport(userID, period, from, to)
+	result, err := h.summaryService.GetReport(groupID, period, from, to)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to get report",

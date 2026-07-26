@@ -12,12 +12,14 @@ import (
 var (
 	testUserRepo     *repository.UserRepository
 	testCategoryRepo *repository.CategoryRepository
+	testGroupRepo    *repository.GroupRepository
 	testAuthSvc      *service.AuthService
 	testTxRepo       *repository.TransactionRepository
 	testTxSvc        *service.TransactionService
 	testSummaryRepo  *repository.SummaryRepository
 	testSummarySvc   *service.SummaryService
 	testUserID       string
+	testGroupID      string
 	testCatID        string
 )
 
@@ -40,7 +42,8 @@ func TestMain(m *testing.M) {
 	testSummaryRepo = repository.NewSummaryRepository(db.Pool)
 
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db.Pool)
-	testAuthSvc = service.NewAuthService(testUserRepo, testCategoryRepo, refreshTokenRepo)
+	testGroupRepo = repository.NewGroupRepository(db.Pool)
+	testAuthSvc = service.NewAuthService(testUserRepo, testCategoryRepo, refreshTokenRepo, testGroupRepo)
 	testTxSvc = service.NewTransactionService(testTxRepo, testCategoryRepo)
 	testSummarySvc = service.NewSummaryService(testSummaryRepo)
 
@@ -48,10 +51,13 @@ func TestMain(m *testing.M) {
 	user, err := testUserRepo.FindByEmail("admin@example.com")
 	if err == nil {
 		testUserID = user.ID
-		// Get category ID
-		cats, err := testCategoryRepo.FindByUserID(testUserID, "income")
-		if err == nil && len(cats) > 0 {
-			testCatID = cats[0].ID
+		// Get category ID (scoping kini berbasis group)
+		if groupID, gerr := testGroupRepo.DefaultGroupForUser(testUserID); gerr == nil {
+			testGroupID = groupID
+			cats, err := testCategoryRepo.FindByGroupID(groupID, "income")
+			if err == nil && len(cats) > 0 {
+				testCatID = cats[0].ID
+			}
 		}
 	}
 
@@ -144,7 +150,7 @@ func TestBcryptHashVerification(t *testing.T) {
 }
 
 func TestJWTTokenValidation(t *testing.T) {
-	accessToken, err := auth.GenerateAccessToken(testUserID, "test@example.com")
+	accessToken, err := auth.GenerateAccessToken(testUserID, "test@example.com", "")
 	if err != nil {
 		t.Fatalf("Generate access token failed: %v", err)
 	}

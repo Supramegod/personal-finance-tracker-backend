@@ -34,13 +34,13 @@ func NewTransactionHandler(transactionService *service.TransactionService) *Tran
 // @Security BearerAuth
 // @Router /transactions [get]
 func (h *TransactionHandler) List(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(string)
+	groupID := c.Locals("group_id").(string)
 
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "20"))
 
 	transactions, total, err := h.transactionService.List(service.ListTransactionsInput{
-		UserID:     userID,
+		GroupID:    groupID,
 		From:       c.Query("from"),
 		To:         c.Query("to"),
 		CategoryID: c.Query("category_id"),
@@ -87,6 +87,7 @@ type createTransactionRequest struct {
 // @Failure 400 {object} map[string]string
 // @Router /transactions [post]
 func (h *TransactionHandler) Create(c *fiber.Ctx) error {
+	groupID := c.Locals("group_id").(string)
 	userID := c.Locals("user_id").(string)
 
 	var req createTransactionRequest
@@ -97,6 +98,7 @@ func (h *TransactionHandler) Create(c *fiber.Ctx) error {
 	}
 
 	transaction, err := h.transactionService.Create(service.CreateTransactionInput{
+		GroupID:         groupID,
 		UserID:          userID,
 		CategoryID:      req.CategoryID,
 		Type:            req.Type,
@@ -124,10 +126,10 @@ func (h *TransactionHandler) Create(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]string
 // @Router /transactions/calendar [get]
 func (h *TransactionHandler) GetCalendar(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(string)
+	groupID := c.Locals("group_id").(string)
 	month := c.Query("month")
 
-	days, err := h.transactionService.GetCalendarMonth(userID, month)
+	days, err := h.transactionService.GetCalendarMonth(groupID, month)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
@@ -155,10 +157,10 @@ func (h *TransactionHandler) GetCalendar(c *fiber.Ctx) error {
 // @Failure 404 {object} map[string]string
 // @Router /transactions/{id} [get]
 func (h *TransactionHandler) GetByID(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(string)
+	groupID := c.Locals("group_id").(string)
 	id := c.Params("id")
 
-	transaction, err := h.transactionService.GetByID(id, userID)
+	transaction, err := h.transactionService.GetByID(id, groupID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "transaction not found",
@@ -189,7 +191,7 @@ type updateTransactionRequest struct {
 // @Failure 400 {object} map[string]string
 // @Router /transactions/{id} [put]
 func (h *TransactionHandler) Update(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(string)
+	groupID := c.Locals("group_id").(string)
 	id := c.Params("id")
 
 	var req updateTransactionRequest
@@ -201,7 +203,7 @@ func (h *TransactionHandler) Update(c *fiber.Ctx) error {
 
 	transaction, err := h.transactionService.Update(service.UpdateTransactionInput{
 		ID:              id,
-		UserID:          userID,
+		GroupID:         groupID,
 		CategoryID:      req.CategoryID,
 		Type:            req.Type,
 		Amount:          req.Amount,
@@ -228,10 +230,10 @@ func (h *TransactionHandler) Update(c *fiber.Ctx) error {
 // @Failure 404 {object} map[string]string
 // @Router /transactions/{id} [delete]
 func (h *TransactionHandler) Delete(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(string)
+	groupID := c.Locals("group_id").(string)
 	id := c.Params("id")
 
-	if err := h.transactionService.Delete(id, userID); err != nil {
+	if err := h.transactionService.Delete(id, groupID); err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "transaction not found",
 		})

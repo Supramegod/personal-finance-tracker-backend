@@ -21,6 +21,7 @@ func NewInstallmentRepository(pool *pgxpool.Pool) *InstallmentRepository {
 // Installment merepresentasikan satu rencana cicilan bulanan.
 type Installment struct {
 	ID            string    `json:"id"`
+	GroupID       string    `json:"group_id"`
 	UserID        string    `json:"user_id"`
 	CategoryID    string    `json:"category_id"`
 	Title         string    `json:"title"`
@@ -53,10 +54,10 @@ type InstallmentPayment struct {
 
 func (r *InstallmentRepository) Create(i *Installment) error {
 	err := r.pool.QueryRow(context.Background(),
-		`INSERT INTO installments (user_id, category_id, title, monthly_amount, tenor_months, start_date, note)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`INSERT INTO installments (group_id, user_id, category_id, title, monthly_amount, tenor_months, start_date, note)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 RETURNING id, created_at`,
-		i.UserID, i.CategoryID, i.Title, i.MonthlyAmount, i.TenorMonths, i.StartDate, i.Note).Scan(
+		i.GroupID, i.UserID, i.CategoryID, i.Title, i.MonthlyAmount, i.TenorMonths, i.StartDate, i.Note).Scan(
 		&i.ID, &i.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("create installment: %w", err)
@@ -64,19 +65,19 @@ func (r *InstallmentRepository) Create(i *Installment) error {
 	return nil
 }
 
-// List mengembalikan semua cicilan milik user beserta progres pembayarannya.
-func (r *InstallmentRepository) List(userID string) ([]InstallmentWithProgress, error) {
+// List mengembalikan semua cicilan milik kelompok beserta progres pembayarannya.
+func (r *InstallmentRepository) List(groupID string) ([]InstallmentWithProgress, error) {
 	rows, err := r.pool.Query(context.Background(),
-		`SELECT i.id, i.user_id, i.category_id, i.title, i.monthly_amount,
+		`SELECT i.id, i.group_id, i.user_id, i.category_id, i.title, i.monthly_amount,
 		        i.tenor_months, i.start_date, COALESCE(i.note, ''), i.created_at,
 		        COALESCE(c.name, '') AS category_name,
 		        COUNT(p.id) AS paid_count
 		 FROM installments i
 		 LEFT JOIN categories c ON c.id = i.category_id
 		 LEFT JOIN installment_payments p ON p.installment_id = i.id
-		 WHERE i.user_id = $1
+		 WHERE i.group_id = $1
 		 GROUP BY i.id, c.name
-		 ORDER BY i.created_at DESC`, userID)
+		 ORDER BY i.created_at DESC`, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("query installments: %w", err)
 	}
@@ -85,7 +86,7 @@ func (r *InstallmentRepository) List(userID string) ([]InstallmentWithProgress, 
 	items := []InstallmentWithProgress{}
 	for rows.Next() {
 		var it InstallmentWithProgress
-		if err := rows.Scan(&it.ID, &it.UserID, &it.CategoryID, &it.Title, &it.MonthlyAmount,
+		if err := rows.Scan(&it.ID, &it.GroupID, &it.UserID, &it.CategoryID, &it.Title, &it.MonthlyAmount,
 			&it.TenorMonths, &it.StartDate, &it.Note, &it.CreatedAt,
 			&it.CategoryName, &it.PaidCount); err != nil {
 			return nil, fmt.Errorf("scan installment: %w", err)
@@ -100,14 +101,14 @@ func (r *InstallmentRepository) List(userID string) ([]InstallmentWithProgress, 
 	return items, nil
 }
 
-// FindByID mengambil satu cicilan (dengan pengecekan kepemilikan).
-func (r *InstallmentRepository) FindByID(id, userID string) (*Installment, error) {
+// FindByID mengambil satu cicilan (dengan pengecekan kepemilikan kelompok).
+func (r *InstallmentRepository) FindByID(id, groupID string) (*Installment, error) {
 	i := &Installment{}
 	err := r.pool.QueryRow(context.Background(),
-		`SELECT id, user_id, category_id, title, monthly_amount, tenor_months,
+		`SELECT id, group_id, user_id, category_id, title, monthly_amount, tenor_months,
 		        start_date, COALESCE(note, ''), created_at
-		 FROM installments WHERE id = $1 AND user_id = $2`, id, userID).Scan(
-		&i.ID, &i.UserID, &i.CategoryID, &i.Title, &i.MonthlyAmount, &i.TenorMonths,
+		 FROM installments WHERE id = $1 AND group_id = $2`, id, groupID).Scan(
+		&i.ID, &i.GroupID, &i.UserID, &i.CategoryID, &i.Title, &i.MonthlyAmount, &i.TenorMonths,
 		&i.StartDate, &i.Note, &i.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -154,6 +155,7 @@ func (r *InstallmentRepository) ListPayments(installmentID string) ([]Installmen
 // PayParams membawa data pembayaran cicilan bulanan.
 type PayParams struct {
 	InstallmentID string
+	GroupID       string
 	UserID        string
 	CategoryID    string
 	Amount        float64
@@ -177,10 +179,10 @@ func (r *InstallmentRepository) Pay(p PayParams) (*InstallmentPayment, error) {
 
 	var txnID string
 	err = tx.QueryRow(ctx,
-		`INSERT INTO transactions (user_id, category_id, type, amount, transaction_date, note)
-		 VALUES ($1, $2, 'expense', $3, $4, $5)
+		`INSERT INTO transactions (group_id, user_id, category_id, type, amount, transaction_date, note)
+		 VALUES ($1, $2, $3, 'expense', $4, $5, $6)
 		 RETURNING id`,
-		p.UserID, p.CategoryID, p.Amount, p.Date, p.Note).Scan(&txnID)
+		p.GroupID, p.UserID, p.CategoryID, p.Amount, p.Date, p.Note).Scan(&txnID)
 	if err != nil {
 		return nil, fmt.Errorf("insert expense transaction: %w", err)
 	}
@@ -206,9 +208,9 @@ func (r *InstallmentRepository) Pay(p PayParams) (*InstallmentPayment, error) {
 	return pay, nil
 }
 
-func (r *InstallmentRepository) Delete(id, userID string) error {
+func (r *InstallmentRepository) Delete(id, groupID string) error {
 	ct, err := r.pool.Exec(context.Background(),
-		`DELETE FROM installments WHERE id = $1 AND user_id = $2`, id, userID)
+		`DELETE FROM installments WHERE id = $1 AND group_id = $2`, id, groupID)
 	if err != nil {
 		return fmt.Errorf("delete installment: %w", err)
 	}
@@ -221,7 +223,7 @@ func (r *InstallmentRepository) Delete(id, userID string) error {
 // ErrPeriodAlreadyPaid dikembalikan bila bulan tersebut sudah dibayar.
 var ErrPeriodAlreadyPaid = errors.New("installment period already paid")
 
-// ErrInstallmentNotFound dikembalikan bila cicilan tidak ada / bukan milik user.
+// ErrInstallmentNotFound dikembalikan bila cicilan tidak ada / bukan milik kelompok.
 var ErrInstallmentNotFound = errors.New("installment not found")
 
 // isUniqueViolation mendeteksi pelanggaran unique constraint PostgreSQL (23505).

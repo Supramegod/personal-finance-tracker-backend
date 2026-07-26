@@ -77,9 +77,14 @@ func TestMain(m *testing.M) {
 	}
 	userID = admin.ID
 
-	// Get a category ID
+	// Get a category ID (scoping kini berbasis group)
 	catRepo := repository.NewCategoryRepository(db.Pool)
-	cats, err := catRepo.FindByUserID(userID, "income")
+	groupRepo := repository.NewGroupRepository(db.Pool)
+	groupID, err := groupRepo.DefaultGroupForUser(userID)
+	if err != nil {
+		log.Fatalf("Admin group not found: %v", err)
+	}
+	cats, err := catRepo.FindByGroupID(groupID, "income")
 	if err != nil || len(cats) == 0 {
 		log.Fatalf("No categories found: %v", err)
 	}
@@ -680,7 +685,7 @@ func TestIntegrationJWTTokenLifecycle(t *testing.T) {
 	defer os.Setenv("JWT_SECRET", "")
 
 	// Generate access token
-	token, err := auth.GenerateAccessToken("test-user-id", "test@example.com")
+	token, err := auth.GenerateAccessToken("test-user-id", "test@example.com", "")
 	if err != nil {
 		t.Fatalf("Generate access token failed: %v", err)
 	}

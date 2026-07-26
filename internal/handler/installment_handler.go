@@ -24,9 +24,9 @@ func NewInstallmentHandler(installmentService *service.InstallmentService) *Inst
 // @Failure 401 {object} map[string]string
 // @Router /installments [get]
 func (h *InstallmentHandler) List(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(string)
+	groupID := c.Locals("group_id").(string)
 
-	items, err := h.installmentService.List(userID)
+	items, err := h.installmentService.List(groupID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to get installments",
@@ -57,6 +57,7 @@ type createInstallmentRequest struct {
 // @Failure 400 {object} map[string]string
 // @Router /installments [post]
 func (h *InstallmentHandler) Create(c *fiber.Ctx) error {
+	groupID := c.Locals("group_id").(string)
 	userID := c.Locals("user_id").(string)
 
 	var req createInstallmentRequest
@@ -67,6 +68,7 @@ func (h *InstallmentHandler) Create(c *fiber.Ctx) error {
 	}
 
 	inst, err := h.installmentService.Create(service.CreateInstallmentInput{
+		GroupID:       groupID,
 		UserID:        userID,
 		CategoryID:    req.CategoryID,
 		Title:         req.Title,
@@ -95,17 +97,17 @@ func (h *InstallmentHandler) Create(c *fiber.Ctx) error {
 // @Failure 404 {object} map[string]string
 // @Router /installments/{id} [get]
 func (h *InstallmentHandler) GetByID(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(string)
+	groupID := c.Locals("group_id").(string)
 	id := c.Params("id")
 
-	inst, err := h.installmentService.GetByID(id, userID)
+	inst, err := h.installmentService.GetByID(id, groupID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "installment not found",
 		})
 	}
 
-	payments, err := h.installmentService.ListPayments(id, userID)
+	payments, err := h.installmentService.ListPayments(id, groupID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to get payments",
@@ -130,10 +132,11 @@ func (h *InstallmentHandler) GetByID(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]string
 // @Router /installments/{id}/pay [post]
 func (h *InstallmentHandler) Pay(c *fiber.Ctx) error {
+	groupID := c.Locals("group_id").(string)
 	userID := c.Locals("user_id").(string)
 	id := c.Params("id")
 
-	pay, err := h.installmentService.Pay(id, userID)
+	pay, err := h.installmentService.Pay(id, groupID, userID)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
@@ -155,10 +158,10 @@ func (h *InstallmentHandler) Pay(c *fiber.Ctx) error {
 // @Failure 404 {object} map[string]string
 // @Router /installments/{id} [delete]
 func (h *InstallmentHandler) Delete(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(string)
+	groupID := c.Locals("group_id").(string)
 	id := c.Params("id")
 
-	if err := h.installmentService.Delete(id, userID); err != nil {
+	if err := h.installmentService.Delete(id, groupID); err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": err.Error(),
 		})

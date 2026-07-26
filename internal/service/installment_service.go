@@ -22,6 +22,7 @@ func NewInstallmentService(
 }
 
 type CreateInstallmentInput struct {
+	GroupID       string
 	UserID        string
 	CategoryID    string
 	Title         string
@@ -46,9 +47,9 @@ func (s *InstallmentService) Create(input CreateInstallmentInput) (*repository.I
 		return nil, errors.New("category_id is required")
 	}
 
-	// Pastikan kategori valid, milik user, dan bertipe expense — cicilan selalu
+	// Pastikan kategori valid, milik kelompok, dan bertipe expense — cicilan selalu
 	// tercatat sebagai pengeluaran. Pola sama dengan TransactionService.Create.
-	category, err := s.categoryRepo.FindByIDAndUserID(input.CategoryID, input.UserID)
+	category, err := s.categoryRepo.FindByIDAndGroupID(input.CategoryID, input.GroupID)
 	if err != nil {
 		return nil, errors.New("category not found")
 	}
@@ -65,6 +66,7 @@ func (s *InstallmentService) Create(input CreateInstallmentInput) (*repository.I
 	}
 
 	inst := &repository.Installment{
+		GroupID:       input.GroupID,
 		UserID:        input.UserID,
 		CategoryID:    input.CategoryID,
 		Title:         input.Title,
@@ -79,17 +81,17 @@ func (s *InstallmentService) Create(input CreateInstallmentInput) (*repository.I
 	return inst, nil
 }
 
-func (s *InstallmentService) List(userID string) ([]repository.InstallmentWithProgress, error) {
-	return s.repo.List(userID)
+func (s *InstallmentService) List(groupID string) ([]repository.InstallmentWithProgress, error) {
+	return s.repo.List(groupID)
 }
 
-func (s *InstallmentService) GetByID(id, userID string) (*repository.Installment, error) {
-	return s.repo.FindByID(id, userID)
+func (s *InstallmentService) GetByID(id, groupID string) (*repository.Installment, error) {
+	return s.repo.FindByID(id, groupID)
 }
 
-func (s *InstallmentService) ListPayments(id, userID string) ([]repository.InstallmentPayment, error) {
-	// Pastikan cicilan milik user sebelum mengembalikan pembayarannya.
-	if _, err := s.repo.FindByID(id, userID); err != nil {
+func (s *InstallmentService) ListPayments(id, groupID string) ([]repository.InstallmentPayment, error) {
+	// Pastikan cicilan milik kelompok sebelum mengembalikan pembayarannya.
+	if _, err := s.repo.FindByID(id, groupID); err != nil {
 		return nil, errors.New("installment not found")
 	}
 	return s.repo.ListPayments(id)
@@ -97,8 +99,8 @@ func (s *InstallmentService) ListPayments(id, userID string) ([]repository.Insta
 
 // Pay mencatat pembayaran cicilan bulan berikutnya: membuat transaksi expense +
 // baris pembayaran (atomik di repository). Ditolak bila cicilan sudah lunas.
-func (s *InstallmentService) Pay(id, userID string) (*repository.InstallmentPayment, error) {
-	inst, err := s.repo.FindByID(id, userID)
+func (s *InstallmentService) Pay(id, groupID, userID string) (*repository.InstallmentPayment, error) {
+	inst, err := s.repo.FindByID(id, groupID)
 	if err != nil {
 		return nil, errors.New("installment not found")
 	}
@@ -116,6 +118,7 @@ func (s *InstallmentService) Pay(id, userID string) (*repository.InstallmentPaym
 
 	pay, err := s.repo.Pay(repository.PayParams{
 		InstallmentID: inst.ID,
+		GroupID:       groupID,
 		UserID:        userID,
 		CategoryID:    inst.CategoryID,
 		Amount:        inst.MonthlyAmount,
@@ -132,8 +135,8 @@ func (s *InstallmentService) Pay(id, userID string) (*repository.InstallmentPaym
 	return pay, nil
 }
 
-func (s *InstallmentService) Delete(id, userID string) error {
-	if err := s.repo.Delete(id, userID); err != nil {
+func (s *InstallmentService) Delete(id, groupID string) error {
+	if err := s.repo.Delete(id, groupID); err != nil {
 		if errors.Is(err, repository.ErrInstallmentNotFound) {
 			return errors.New("installment not found")
 		}
