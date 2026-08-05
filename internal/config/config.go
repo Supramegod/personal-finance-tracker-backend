@@ -21,8 +21,8 @@ type Config struct {
 	DBConnMaxLifetime time.Duration
 
 	// Auth
-	JWTSecret       string
-	JWTAccessExpiry time.Duration
+	JWTSecret        string
+	JWTAccessExpiry  time.Duration
 	JWTRefreshExpiry time.Duration
 
 	// Admin Seed
@@ -30,8 +30,8 @@ type Config struct {
 	AdminPassword string
 
 	// Server
-	Port  string
-	Env   string
+	Port string
+	Env  string
 
 	// Swagger
 	SwaggerHost string
@@ -44,6 +44,13 @@ type Config struct {
 
 	// Logging
 	LogLevel string
+
+	// AI Insights (optional; server tetap berjalan bila dinonaktifkan).
+	AIInsightsEnabled bool
+	GeminiAPIKey      string
+	AIModel           string
+	AIPromptVersion   string
+	AITimeout         time.Duration
 }
 
 // Load membaca konfigurasi dari environment variable.
@@ -68,6 +75,11 @@ func Load() *Config {
 		CORSOrigins:        getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"),
 		RateLimitPerMinute: getEnvInt("RATE_LIMIT_PER_MINUTE", 60),
 		LogLevel:           getEnv("LOG_LEVEL", "debug"),
+		AIInsightsEnabled:  getEnvBool("AI_INSIGHTS_ENABLED", false),
+		GeminiAPIKey:       getEnv("GEMINI_API_KEY", ""),
+		AIModel:            getEnv("AI_MODEL", "gemini-2.5-flash-lite"),
+		AIPromptVersion:    getEnv("AI_PROMPT_VERSION", "v1"),
+		AITimeout:          getEnvDuration("AI_TIMEOUT", 30*time.Second),
 	}
 
 	// Kumpulkan semua yang kosong dulu, baru lapor sekaligus — supaya tidak
@@ -99,6 +111,17 @@ func Load() *Config {
 	}
 
 	return cfg
+}
+
+func getEnvBool(key string, defaultVal bool) bool {
+	if val := os.Getenv(key); val != "" {
+		parsed, err := strconv.ParseBool(val)
+		if err == nil {
+			return parsed
+		}
+		log.Printf("Warning: invalid %s=%s, using default %t", key, val, defaultVal)
+	}
+	return defaultVal
 }
 
 func getEnv(key, defaultVal string) string {

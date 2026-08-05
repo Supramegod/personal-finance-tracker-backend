@@ -1,5 +1,12 @@
 basePath: /api/v1
 definitions:
+  handler.addMemberRequest:
+    properties:
+      role:
+        type: string
+      user_id:
+        type: string
+    type: object
   handler.createCategoryRequest:
     properties:
       icon:
@@ -7,6 +14,26 @@ definitions:
       name:
         type: string
       type:
+        type: string
+    type: object
+  handler.createGroupRequest:
+    properties:
+      name:
+        type: string
+    type: object
+  handler.createInstallmentRequest:
+    properties:
+      category_id:
+        type: string
+      monthly_amount:
+        type: number
+      note:
+        type: string
+      start_date:
+        type: string
+      tenor_months:
+        type: integer
+      title:
         type: string
     type: object
   handler.createTransactionRequest:
@@ -22,6 +49,15 @@ definitions:
       type:
         type: string
     type: object
+  handler.createUserRequest:
+    properties:
+      email:
+        type: string
+      full_name:
+        type: string
+      password:
+        type: string
+    type: object
   handler.loginRequest:
     properties:
       email:
@@ -32,6 +68,11 @@ definitions:
   handler.refreshRequest:
     properties:
       refresh_token:
+        type: string
+    type: object
+  handler.switchGroupRequest:
+    properties:
+      group_id:
         type: string
     type: object
   handler.updateTransactionRequest:
@@ -47,9 +88,24 @@ definitions:
       type:
         type: string
     type: object
+  repository.AIConsent:
+    properties:
+      available:
+        type: boolean
+      can_manage:
+        type: boolean
+      consent_at:
+        type: string
+      consent_by:
+        type: string
+      enabled:
+        type: boolean
+    type: object
   repository.Category:
     properties:
       created_at:
+        type: string
+      group_id:
         type: string
       icon:
         type: string
@@ -62,6 +118,57 @@ definitions:
       type:
         type: string
       user_id:
+        type: string
+    type: object
+  repository.Group:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      owner_user_id:
+        type: string
+      role:
+        type: string
+    type: object
+  repository.Installment:
+    properties:
+      category_id:
+        type: string
+      created_at:
+        type: string
+      group_id:
+        type: string
+      id:
+        type: string
+      monthly_amount:
+        type: number
+      note:
+        type: string
+      start_date:
+        type: string
+      tenor_months:
+        type: integer
+      title:
+        type: string
+      user_id:
+        type: string
+    type: object
+  repository.InstallmentPayment:
+    properties:
+      amount:
+        type: number
+      id:
+        type: string
+      installment_id:
+        type: string
+      paid_at:
+        type: string
+      period_index:
+        type: integer
+      transaction_id:
         type: string
     type: object
   repository.ReportRow:
@@ -82,6 +189,10 @@ definitions:
       category_name:
         type: string
       created_at:
+        type: string
+      deleted_at:
+        type: string
+      group_id:
         type: string
       id:
         type: string
@@ -108,18 +219,99 @@ definitions:
         type: string
       updated_at:
         type: string
-      username:
-        type: string
     type: object
   service.BalanceResponse:
     properties:
       balance:
         type: number
     type: object
+  service.CategorySpending:
+    properties:
+      amount:
+        type: number
+      name:
+        type: string
+      share_percent:
+        type: number
+    type: object
+  service.InsightAnalysis:
+    properties:
+      cautions:
+        items:
+          type: string
+        type: array
+      headline:
+        type: string
+      health_status:
+        type: string
+      key_findings:
+        items:
+          type: string
+        type: array
+      recommendations:
+        items:
+          $ref: '#/definitions/service.InsightRecommendation'
+        type: array
+      summary:
+        type: string
+    type: object
+  service.InsightFacts:
+    properties:
+      expense_change_percent:
+        type: number
+      net:
+        type: number
+      savings_rate_percent:
+        type: number
+      top_expense_categories:
+        items:
+          $ref: '#/definitions/service.CategorySpending'
+        type: array
+      total_expense:
+        type: number
+      total_income:
+        type: number
+      transaction_count:
+        type: integer
+    type: object
+  service.InsightRecommendation:
+    properties:
+      action:
+        type: string
+      priority:
+        type: string
+      title:
+        type: string
+    type: object
+  service.InsightResponse:
+    properties:
+      analysis:
+        $ref: '#/definitions/service.InsightAnalysis'
+      error:
+        type: string
+      facts:
+        $ref: '#/definitions/service.InsightFacts'
+      generated_at:
+        type: string
+      is_stale:
+        type: boolean
+      model:
+        type: string
+      period:
+        type: string
+      status:
+        type: string
+    type: object
   service.LoginResponse:
     properties:
       access_token:
         type: string
+      active_group_id:
+        type: string
+      groups:
+        items:
+          $ref: '#/definitions/repository.Group'
+        type: array
       refresh_token:
         type: string
       user:
@@ -181,12 +373,27 @@ paths:
       - Auth
   /auth/logout:
     post:
-      description: Menghapus sesi user (invalidasi token)
+      consumes:
+      - application/json
+      description: Menghapus sesi user (invalidasi refresh token)
+      parameters:
+      - description: Refresh Token to revoke
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.refreshRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
           schema:
             additionalProperties:
               type: string
@@ -222,6 +429,30 @@ paths:
       summary: Refresh access token
       tags:
       - Auth
+  /auth/switch-group:
+    post:
+      consumes:
+      - application/json
+      description: Menerbitkan ulang token dengan scope group yang dipilih
+      parameters:
+      - description: Group tujuan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.switchGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.LoginResponse'
+      security:
+      - BearerAuth: []
+      summary: Ganti kelompok aktif
+      tags:
+      - Groups
   /categories:
     get:
       description: Mendapatkan daftar kategori transaksi milik user yang login
@@ -284,6 +515,340 @@ paths:
       summary: Buat kategori baru
       tags:
       - Categories
+  /groups:
+    get:
+      description: Mendapatkan daftar kelompok yang diikuti user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Daftar kelompok
+      tags:
+      - Groups
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Data kelompok
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/repository.Group'
+      security:
+      - BearerAuth: []
+      summary: Buat kelompok baru
+      tags:
+      - Groups
+  /groups/{id}/ai-consent:
+    get:
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/repository.AIConsent'
+      security:
+      - BearerAuth: []
+      summary: Status consent AI kelompok
+      tags:
+      - AI Insights
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: '{enabled: boolean}'
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/repository.AIConsent'
+      security:
+      - BearerAuth: []
+      summary: Ubah consent AI kelompok (owner-only)
+      tags:
+      - AI Insights
+  /groups/{id}/members:
+    get:
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Daftar anggota kelompok
+      tags:
+      - Groups
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Anggota
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.addMemberRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tambah anggota kelompok (owner-only)
+      tags:
+      - Groups
+  /groups/{id}/members/{userId}:
+    delete:
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus anggota kelompok (owner-only)
+      tags:
+      - Groups
+  /installments:
+    get:
+      description: Mendapatkan semua cicilan milik user beserta progres pembayaran
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Daftar cicilan
+      tags:
+      - Installments
+    post:
+      consumes:
+      - application/json
+      description: Membuat rencana cicilan bulanan (nominal per bulan + tenor)
+      parameters:
+      - description: Data cicilan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createInstallmentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/repository.Installment'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Buat cicilan baru
+      tags:
+      - Installments
+  /installments/{id}:
+    delete:
+      description: |-
+        Menghapus rencana cicilan. Transaksi pengeluaran yang sudah
+        tercatat TIDAK ikut terhapus.
+      parameters:
+      - description: ID Cicilan
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus cicilan
+      tags:
+      - Installments
+    get:
+      description: Mendapatkan detail satu cicilan beserta riwayat pembayaran
+      parameters:
+      - description: ID Cicilan
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Detail cicilan
+      tags:
+      - Installments
+  /installments/{id}/pay:
+    post:
+      description: |-
+        Mencatat pembayaran cicilan bulan berikutnya. Membuat transaksi
+        pengeluaran (expense) senilai cicilan per bulan.
+      parameters:
+      - description: ID Cicilan
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/repository.InstallmentPayment'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Bayar cicilan bulan ini
+      tags:
+      - Installments
+  /summary/ai-insights:
+    get:
+      parameters:
+      - description: Bulan YYYY-MM
+        in: query
+        name: month
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.InsightResponse'
+      security:
+      - BearerAuth: []
+      summary: Insight AI untuk bulan tertentu
+      tags:
+      - AI Insights
+  /summary/ai-insights/latest:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.InsightResponse'
+      security:
+      - BearerAuth: []
+      summary: Insight AI terbaru untuk dashboard
+      tags:
+      - AI Insights
   /summary/balance:
     get:
       description: Mendapatkan saldo terkini (running balance) = total income - total
@@ -508,11 +1073,75 @@ paths:
       summary: Update transaksi
       tags:
       - Transactions
-schemes:
-- http
+  /transactions/calendar:
+    get:
+      description: 'Mendapatkan ringkasan transaksi per tanggal dalam satu bulan (default:
+        bulan berjalan jika tidak ada query)'
+      parameters:
+      - description: 'Bulan (YYYY-MM) — default: bulan berjalan'
+        in: query
+        name: month
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Kalender transaksi bulanan
+      tags:
+      - Transactions
+  /users:
+    get:
+      description: Semua user anggota dari group-group milik owner
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Daftar user yang dikelola (kolam)
+      tags:
+      - Users
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Data user
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/repository.User'
+      security:
+      - BearerAuth: []
+      summary: Buat akun user baru (oleh owner)
+      tags:
+      - Users
 securityDefinitions:
   BearerAuth:
-    description: 'Masukkan token dengan format: Bearer &lt;access_token&gt;'
+    description: 'Masukkan token dengan format: Bearer <access_token>'
     in: header
     name: Authorization
     type: apiKey

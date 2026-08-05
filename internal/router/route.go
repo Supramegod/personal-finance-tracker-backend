@@ -22,6 +22,7 @@ func SetupRoutes(
 	summaryService *service.SummaryService,
 	installmentService *service.InstallmentService,
 	groupService *service.GroupService,
+	aiInsightService *service.AIInsightService,
 ) {
 	// ─── Public routes ──────────────────────────────────────────────
 	authHandler := handler.NewAuthHandler(authService)
@@ -42,6 +43,9 @@ func SetupRoutes(
 		protected.Get("/groups/:id/members", groupHandler.ListMembers)
 		protected.Post("/groups/:id/members", groupHandler.AddMember)
 		protected.Delete("/groups/:id/members/:userId", groupHandler.RemoveMember)
+		aiHandler := handler.NewAIInsightHandler(aiInsightService)
+		protected.Get("/groups/:id/ai-consent", aiHandler.Consent)
+		protected.Put("/groups/:id/ai-consent", aiHandler.UpdateConsent)
 
 		// Categories
 		categoryHandler := handler.NewCategoryHandler(categoryService)
@@ -61,6 +65,8 @@ func SetupRoutes(
 		summaryHandler := handler.NewSummaryHandler(summaryService)
 		protected.Get("/summary/balance", summaryHandler.Balance)
 		protected.Get("/summary/report", summaryHandler.Report)
+		protected.Get("/summary/ai-insights", aiHandler.ByMonth)
+		protected.Get("/summary/ai-insights/latest", aiHandler.Latest)
 
 		// Installments / Cicilan
 		installmentHandler := handler.NewInstallmentHandler(installmentService)

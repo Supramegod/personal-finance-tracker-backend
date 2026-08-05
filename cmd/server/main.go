@@ -108,6 +108,7 @@ Personal Finance Tracker API
 	refreshTokenRepo := repository.NewRefreshTokenRepository(connPool)
 	installmentRepo := repository.NewInstallmentRepository(connPool)
 	groupRepo := repository.NewGroupRepository(connPool)
+	aiInsightRepo := repository.NewAIInsightRepository(connPool)
 
 	// Services
 	authService := service.NewAuthService(userRepo, categoryRepo, refreshTokenRepo, groupRepo)
@@ -116,10 +117,12 @@ Personal Finance Tracker API
 	summaryService := service.NewSummaryService(summaryRepo)
 	installmentService := service.NewInstallmentService(installmentRepo, categoryRepo)
 	groupService := service.NewGroupService(groupRepo, userRepo)
+	aiInsightService := service.NewAIInsightService(aiInsightRepo, cfg.GeminiAPIKey, cfg.AIModel, cfg.AIPromptVersion, cfg.AITimeout, cfg.AIInsightsEnabled)
 
 	// Background goroutines
 	go StartTokenCleanup(refreshTokenRepo)
 	go StartDBHealthCheck(connPool, 5*time.Minute)
+	go StartAIInsightScheduler(aiInsightService)
 
 	// Fiber app
 	app := fiber.New(fiber.Config{
@@ -150,7 +153,7 @@ Personal Finance Tracker API
 	})
 
 	// API routes
-	router.SetupRoutes(app, authService, categoryService, transactionService, summaryService, installmentService, groupService)
+	router.SetupRoutes(app, authService, categoryService, transactionService, summaryService, installmentService, groupService, aiInsightService)
 
 	// Signal handling goroutine (pola user)
 	go func() {

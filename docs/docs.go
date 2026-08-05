@@ -67,7 +67,10 @@ const docTemplate = `{
         },
         "/auth/logout": {
             "post": {
-                "description": "Menghapus sesi user (invalidasi token)",
+                "description": "Menghapus sesi user (invalidasi refresh token)",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -75,9 +78,29 @@ const docTemplate = `{
                     "Auth"
                 ],
                 "summary": "Logout user",
+                "parameters": [
+                    {
+                        "description": "Refresh Token to revoke",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.refreshRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -126,6 +149,45 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/switch-group": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menerbitkan ulang token dengan scope group yang dipilih",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Groups"
+                ],
+                "summary": "Ganti kelompok aktif",
+                "parameters": [
+                    {
+                        "description": "Group tujuan",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.switchGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.LoginResponse"
                         }
                     }
                 }
@@ -224,6 +286,536 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/groups": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan daftar kelompok yang diikuti user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Groups"
+                ],
+                "summary": "Daftar kelompok",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Groups"
+                ],
+                "summary": "Buat kelompok baru",
+                "parameters": [
+                    {
+                        "description": "Data kelompok",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.createGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/repository.Group"
+                        }
+                    }
+                }
+            }
+        },
+        "/groups/{id}/ai-consent": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI Insights"
+                ],
+                "summary": "Status consent AI kelompok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/repository.AIConsent"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI Insights"
+                ],
+                "summary": "Ubah consent AI kelompok (owner-only)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "{enabled: boolean}",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/repository.AIConsent"
+                        }
+                    }
+                }
+            }
+        },
+        "/groups/{id}/members": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Groups"
+                ],
+                "summary": "Daftar anggota kelompok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Groups"
+                ],
+                "summary": "Tambah anggota kelompok (owner-only)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Anggota",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.addMemberRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/groups/{id}/members/{userId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Groups"
+                ],
+                "summary": "Hapus anggota kelompok (owner-only)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/installments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan semua cicilan milik user beserta progres pembayaran",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Installments"
+                ],
+                "summary": "Daftar cicilan",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membuat rencana cicilan bulanan (nominal per bulan + tenor)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Installments"
+                ],
+                "summary": "Buat cicilan baru",
+                "parameters": [
+                    {
+                        "description": "Data cicilan",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.createInstallmentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/repository.Installment"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/installments/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan detail satu cicilan beserta riwayat pembayaran",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Installments"
+                ],
+                "summary": "Detail cicilan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID Cicilan",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus rencana cicilan. Transaksi pengeluaran yang sudah\ntercatat TIDAK ikut terhapus.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Installments"
+                ],
+                "summary": "Hapus cicilan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID Cicilan",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/installments/{id}/pay": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mencatat pembayaran cicilan bulan berikutnya. Membuat transaksi\npengeluaran (expense) senilai cicilan per bulan.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Installments"
+                ],
+                "summary": "Bayar cicilan bulan ini",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID Cicilan",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/repository.InstallmentPayment"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/summary/ai-insights": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI Insights"
+                ],
+                "summary": "Insight AI untuk bulan tertentu",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bulan YYYY-MM",
+                        "name": "month",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.InsightResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/summary/ai-insights/latest": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI Insights"
+                ],
+                "summary": "Insight AI terbaru untuk dashboard",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.InsightResponse"
                         }
                     }
                 }
@@ -441,6 +1033,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/transactions/calendar": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan ringkasan transaksi per tanggal dalam satu bulan (default: bulan berjalan jika tidak ada query)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Transactions"
+                ],
+                "summary": "Kalender transaksi bulanan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bulan (YYYY-MM) — default: bulan berjalan",
+                        "name": "month",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/transactions/{id}": {
             "get": {
                 "security": [
@@ -580,9 +1215,82 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Semua user anggota dari group-group milik owner",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Daftar user yang dikelola (kolam)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Buat akun user baru (oleh owner)",
+                "parameters": [
+                    {
+                        "description": "Data user",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.createUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/repository.User"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "handler.addMemberRequest": {
+            "type": "object",
+            "properties": {
+                "role": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.createCategoryRequest": {
             "type": "object",
             "properties": {
@@ -593,6 +1301,37 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.createGroupRequest": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.createInstallmentRequest": {
+            "type": "object",
+            "properties": {
+                "category_id": {
+                    "type": "string"
+                },
+                "monthly_amount": {
+                    "type": "number"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "start_date": {
+                    "type": "string"
+                },
+                "tenor_months": {
+                    "type": "integer"
+                },
+                "title": {
                     "type": "string"
                 }
             }
@@ -617,6 +1356,20 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.createUserRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "full_name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.loginRequest": {
             "type": "object",
             "properties": {
@@ -632,6 +1385,14 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.switchGroupRequest": {
+            "type": "object",
+            "properties": {
+                "group_id": {
                     "type": "string"
                 }
             }
@@ -656,10 +1417,33 @@ const docTemplate = `{
                 }
             }
         },
+        "repository.AIConsent": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "can_manage": {
+                    "type": "boolean"
+                },
+                "consent_at": {
+                    "type": "string"
+                },
+                "consent_by": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
         "repository.Category": {
             "type": "object",
             "properties": {
                 "created_at": {
+                    "type": "string"
+                },
+                "group_id": {
                     "type": "string"
                 },
                 "icon": {
@@ -678,6 +1462,84 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "repository.Group": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner_user_id": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "repository.Installment": {
+            "type": "object",
+            "properties": {
+                "category_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "monthly_amount": {
+                    "type": "number"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "start_date": {
+                    "type": "string"
+                },
+                "tenor_months": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "repository.InstallmentPayment": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "installment_id": {
+                    "type": "string"
+                },
+                "paid_at": {
+                    "type": "string"
+                },
+                "period_index": {
+                    "type": "integer"
+                },
+                "transaction_id": {
                     "type": "string"
                 }
             }
@@ -709,6 +1571,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "created_at": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "group_id": {
                     "type": "string"
                 },
                 "id": {
@@ -748,9 +1616,6 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
-                },
-                "username": {
-                    "type": "string"
                 }
             }
         },
@@ -762,11 +1627,138 @@ const docTemplate = `{
                 }
             }
         },
+        "service.CategorySpending": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "share_percent": {
+                    "type": "number"
+                }
+            }
+        },
+        "service.InsightAnalysis": {
+            "type": "object",
+            "properties": {
+                "cautions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "headline": {
+                    "type": "string"
+                },
+                "health_status": {
+                    "type": "string"
+                },
+                "key_findings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "recommendations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.InsightRecommendation"
+                    }
+                },
+                "summary": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.InsightFacts": {
+            "type": "object",
+            "properties": {
+                "expense_change_percent": {
+                    "type": "number"
+                },
+                "net": {
+                    "type": "number"
+                },
+                "savings_rate_percent": {
+                    "type": "number"
+                },
+                "top_expense_categories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.CategorySpending"
+                    }
+                },
+                "total_expense": {
+                    "type": "number"
+                },
+                "total_income": {
+                    "type": "number"
+                },
+                "transaction_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "service.InsightRecommendation": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.InsightResponse": {
+            "type": "object",
+            "properties": {
+                "analysis": {
+                    "$ref": "#/definitions/service.InsightAnalysis"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "facts": {
+                    "$ref": "#/definitions/service.InsightFacts"
+                },
+                "generated_at": {
+                    "type": "string"
+                },
+                "is_stale": {
+                    "type": "boolean"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "period": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "service.LoginResponse": {
             "type": "object",
             "properties": {
                 "access_token": {
                     "type": "string"
+                },
+                "active_group_id": {
+                    "type": "string"
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/repository.Group"
+                    }
                 },
                 "refresh_token": {
                     "type": "string"
@@ -799,7 +1791,7 @@ const docTemplate = `{
     },
     "securityDefinitions": {
         "BearerAuth": {
-            "description": "Masukkan token dengan format: Bearer \u0026lt;access_token\u0026gt;",
+            "description": "Masukkan token dengan format: Bearer \u003caccess_token\u003e",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"
@@ -812,7 +1804,7 @@ var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "localhost:8080",
 	BasePath:         "/api/v1",
-	Schemes:          []string{"http"},
+	Schemes:          []string{},
 	Title:            "Personal Finance Tracker API",
 	Description:      "Aplikasi pencatatan keuangan pribadi — Backend API",
 	InfoInstanceName: "swagger",
