@@ -10,9 +10,12 @@ import (
 
 func StartAIInsightScheduler(insights *service.AIInsightService) {
 	run := func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
-		defer cancel()
-		if err := insights.GeneratePreviousMonthForEnabled(ctx, time.Now()); err != nil {
+		// Tidak ada batas waktu untuk keseluruhan sapuan: setiap grup sudah
+		// dibatasi sendiri di dalam GeneratePreviousMonthForEnabled. Batas
+		// menyeluruh yang sebelumnya dipasang di sini justru berbahaya —
+		// begitu habis, semua grup yang belum diproses ditandai gagal
+		// hanya karena antreannya panjang, bukan karena ada yang salah.
+		if err := insights.GeneratePreviousMonthForEnabled(context.Background(), time.Now()); err != nil {
 			log.Printf("AI insight scheduler: %v", err)
 		}
 	}

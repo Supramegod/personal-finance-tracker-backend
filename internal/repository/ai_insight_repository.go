@@ -143,6 +143,20 @@ func (r *AIInsightRepository) Latest(groupID string) (*AIInsight, error) {
 		WHERE i.group_id=$1 ORDER BY i.period_month DESC LIMIT 1`, groupID))
 }
 
+// staleProcessingAfter membatasi berapa lama sebuah baris boleh tertahan di
+// status 'processing' sebelum boleh diklaim ulang.
+//
+// Tanpa batas ini, proses yang mati di antara Claim() dan Complete()/Fail()
+// — rollout, OOM, SIGKILL — meninggalkan baris 'processing' selamanya:
+// klausa ON CONFLICT tidak pernah cocok lagi selama input tidak berubah,
+// sehingga RowsAffected() selalu 0 dan pengguna melihat "Sedang dianalisis"
+// tanpa akhir.
+//
+// Satu grup paling lama memakan ~100 detik (3 percobaan x timeout 30s plus
+// backoff), jadi 1 jam jauh di atas durasi kerja normal dan tidak akan
+// merebut pekerjaan yang benar-benar masih berjalan.
+const staleProcessingAfter = "1 hour"
+
 func (r *AIInsightRepository) Claim(groupID string, month time.Time, facts json.RawMessage, model, promptVersion, hash string) (bool, error) {
 	result, err := r.pool.Exec(context.Background(), `
 		INSERT INTO financial_ai_insights(group_id, period_month, status, facts, model, prompt_version, source_hash)
@@ -153,7 +167,9 @@ func (r *AIInsightRepository) Claim(groupID string, month time.Time, facts json.
 		WHERE financial_ai_insights.status IN ('failed','pending')
 		   OR financial_ai_insights.source_hash <> EXCLUDED.source_hash
 		   OR financial_ai_insights.model <> EXCLUDED.model
-		   OR financial_ai_insights.prompt_version <> EXCLUDED.prompt_version`,
+		   OR financial_ai_insights.prompt_version <> EXCLUDED.prompt_version
+		   OR (financial_ai_insights.status='processing'
+		       AND financial_ai_insights.updated_at < NOW() - INTERVAL '`+staleProcessingAfter+`')`,
 		groupID, month, facts, model, promptVersion, hash)
 	return result.RowsAffected() == 1, err
 }

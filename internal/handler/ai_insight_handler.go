@@ -91,7 +91,28 @@ func (h *AIInsightHandler) UpdateConsent(c *fiber.Ctx) error {
 	}
 	result, err := h.service.SetConsent(c.Params("id"), c.Locals("user_id").(string), body.Enabled)
 	if err != nil {
-		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
+		return consentError(c, err)
 	}
 	return c.JSON(result)
+}
+
+// consentError memetakan kegagalan SetConsent ke status HTTP yang tepat.
+//
+// Sebelumnya semua error dibalas 403 dengan err.Error() mentah. Dua
+// akibatnya: kegagalan database dilaporkan kepada pengguna sebagai
+// "forbidden" (menyesatkan saat debug), dan pesan driver Postgres —
+// termasuk potongan query dan nama kolom — bocor ke klien.
+//
+// Hanya dua kondisi yang benar-benar diketahui berasal dari service;
+// selebihnya diperlakukan sebagai kegagalan internal dan dibalas pesan
+// generik, sejalan dengan ByMonth/Latest di file yang sama.
+func consentError(c *fiber.Ctx, err error) error {
+	switch err.Error() {
+	case "only owner can manage AI consent":
+		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
+	case "AI insights are not configured":
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	default:
+		return c.Status(500).JSON(fiber.Map{"error": "failed to update AI consent"})
+	}
 }
