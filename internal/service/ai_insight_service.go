@@ -88,7 +88,7 @@ func (s *AIInsightService) SetConsent(groupID, userID string, enabled bool) (*re
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
-			_ = s.Generate(ctx, groupID, normalizeMonth(time.Now().In(jakartaLocation()).AddDate(0, -1, 0)))
+			_ = s.Generate(ctx, groupID, previousMonth(time.Now()))
 		}()
 	}
 	return consent, err
@@ -117,14 +117,28 @@ func (s *AIInsightService) GeneratePreviousMonthForEnabled(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	month := normalizeMonth(now.In(jakartaLocation()).AddDate(0, -1, 0))
+	month := previousMonth(now)
 	for _, groupID := range groups {
-		if err := s.Generate(ctx, groupID, month); err != nil { /* continue other groups */
+		// Setiap grup memperoleh batas waktunya sendiri. Sebelumnya satu
+		// context dipakai bersama untuk seluruh sapuan, sehingga begitu
+		// batas itu habis SEMUA grup yang belum sempat diproses langsung
+		// ditandai gagal — grup yang lambat menjatuhkan grup sesudahnya.
+		groupCtx, cancel := context.WithTimeout(ctx, perGroupTimeout)
+		err := s.Generate(groupCtx, groupID, month)
+		cancel()
+		if err != nil { /* lanjutkan grup berikutnya */
 			continue
 		}
 	}
 	return nil
 }
+
+// perGroupTimeout membatasi satu grup dalam sapuan terjadwal.
+//
+// Batas atas kerja normal satu grup ~100 detik: 3 percobaan x timeout HTTP
+// 30 detik, ditambah backoff 1s dan 2s. 3 menit memberi ruang aman tanpa
+// membiarkan satu grup menggantung tak terbatas.
+const perGroupTimeout = 3 * time.Minute
 
 func (s *AIInsightService) Generate(ctx context.Context, groupID string, month time.Time) error {
 	if !s.enabled || s.apiKey == "" {
@@ -284,6 +298,19 @@ func validateAnalysis(a *InsightAnalysis) error {
 	if len(a.KeyFindings) > 5 || len(a.Recommendations) > 5 || len(a.Cautions) > 3 {
 		return errors.New("analysis contains too many items")
 	}
+	// Slice nil di-serialize menjadi `null`, bukan `[]`. Klien yang memakai
+	// nilai default parameter (yang hanya menangkap `undefined`) akan crash
+	// saat membaca .length. Normalkan di sini supaya bentuk JSON yang
+	// tersimpan maupun yang dikirim selalu berupa array.
+	if a.KeyFindings == nil {
+		a.KeyFindings = []string{}
+	}
+	if a.Recommendations == nil {
+		a.Recommendations = []InsightRecommendation{}
+	}
+	if a.Cautions == nil {
+		a.Cautions = []string{}
+	}
 	return nil
 }
 
@@ -312,6 +339,22 @@ func insightResponse(i *repository.AIInsight) (*InsightResponse, error) {
 }
 func normalizeMonth(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, jakartaLocation())
+}
+
+// previousMonth mengembalikan tanggal 1 bulan sebelum `now` (zona Jakarta).
+//
+// Urutannya WAJIB normalisasi dulu, baru kurangi bulan. Kebalikannya salah:
+// AddDate menormalkan tanggal yang melimpah, sehingga pada tanggal 29-31
+// pengurangan bulan justru menghasilkan bulan berjalan. Contoh nyata,
+// 31 Desember 2026:
+//
+//	AddDate dulu  : Date(2026,11,31) -> dinormalkan jadi 2026-12-01  (SALAH)
+//	normalize dulu: Date(2026,12,1)  -> AddDate(0,-1,0) -> 2026-11-01 (benar)
+//
+// Tanpa ini, insight bulan November tidak pernah dibuat, dan yang tersimpan
+// justru analisis Desember yang datanya belum lengkap.
+func previousMonth(now time.Time) time.Time {
+	return normalizeMonth(now.In(jakartaLocation())).AddDate(0, -1, 0)
 }
 func jakartaLocation() *time.Location {
 	loc, err := time.LoadLocation("Asia/Jakarta")
