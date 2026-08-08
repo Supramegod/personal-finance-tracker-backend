@@ -254,13 +254,26 @@ func (r *GroupRepository) SeedDefaultCategories(groupID, creatorUserID string) e
 // salah satu group yang di-own ownerUserID. Dipakai sebagai "kolam" user di
 // frontend untuk di-assign ke group.
 func (r *GroupRepository) ListManagedUsers(ownerUserID string) ([]User, error) {
+	// Kepemilikan diambil dari users.owner_user_id, BUKAN dari keanggotaan
+	// kelompok. Versi lama menjoin group_members, sehingga user yang tidak
+	// menjadi anggota kelompok mana pun lenyap dari kolam walau akunnya masih
+	// ada — mengeluarkan seseorang dari kelompok terakhirnya membuatnya yatim
+	// dan tak bisa dijangkau lagi lewat UI.
+	//
+	// Bagian kedua UNION menjaga kompatibilitas data lama: user yang menjadi
+	// anggota kelompok milik owner ini tetap tampil meski owner_user_id-nya
+	// belum sempat terisi.
 	rows, err := r.pool.Query(context.Background(),
 		`SELECT DISTINCT u.id, u.email, u.password_hash, u.full_name, u.created_at, u.updated_at
+		 FROM users u
+		 WHERE u.owner_user_id = $1
+		 UNION
+		 SELECT DISTINCT u.id, u.email, u.password_hash, u.full_name, u.created_at, u.updated_at
 		 FROM users u
 		 JOIN group_members gm ON gm.user_id = u.id
 		 JOIN groups g ON g.id = gm.group_id
 		 WHERE g.owner_user_id = $1
-		 ORDER BY u.created_at`, ownerUserID)
+		 ORDER BY created_at`, ownerUserID)
 	if err != nil {
 		return nil, fmt.Errorf("list managed users: %w", err)
 	}
