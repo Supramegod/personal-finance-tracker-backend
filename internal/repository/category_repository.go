@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -85,6 +87,41 @@ func (r *CategoryRepository) FindByIDAndGroupID(id string, groupID string) (*Cat
 	return c, nil
 }
 
+// ErrCategoryTypeMismatch dikembalikan bila kategori dengan nama yang diminta
+// sudah ada di group tapi tipenya berbeda dari yang diharapkan.
+var ErrCategoryTypeMismatch = errors.New("category exists with a different type")
+
+// EnsureSystemCategory memastikan kategori sistem (mis. "Tabungan") ada di
+// groupID lalu mengembalikan id-nya. Dipakai modul tabungan, yang butuh
+// kategori tetap untuk mencatat setoran/penarikan.
+//
+// Idempotent lewat ON CONFLICT (group_id, name) — constraint
+// uq_categories_group_name. Bila nama itu ternyata sudah dipakai user dengan
+// tipe lain, kembalikan ErrCategoryTypeMismatch daripada diam-diam mencatat
+// transaksi ke kategori bertipe salah.
+func (r *CategoryRepository) EnsureSystemCategory(groupID, creatorUserID, name, categoryType, icon string) (string, error) {
+	ctx := context.Background()
+
+	if _, err := r.pool.Exec(ctx,
+		`INSERT INTO categories (group_id, user_id, name, type, icon, is_default)
+		 VALUES ($1, $2, $3, $4, $5, true)
+		 ON CONFLICT (group_id, name) DO NOTHING`,
+		groupID, creatorUserID, name, categoryType, icon); err != nil {
+		return "", fmt.Errorf("ensure system category %s: %w", name, err)
+	}
+
+	var id, existingType string
+	if err := r.pool.QueryRow(ctx,
+		`SELECT id, type FROM categories WHERE group_id = $1 AND name = $2`,
+		groupID, name).Scan(&id, &existingType); err != nil {
+		return "", fmt.Errorf("find system category %s: %w", name, err)
+	}
+	if existingType != categoryType {
+		return "", ErrCategoryTypeMismatch
+	}
+	return id, nil
+}
+
 // FindByIDAndUserID mencari kategori berdasarkan id dan memastikan kategori
 // tersebut milik userID. Digunakan untuk memvalidasi kepemilikan category_id
 // sebelum dipakai pada transaksi, supaya user A tidak bisa memakai
@@ -103,12 +140,12 @@ func (r *CategoryRepository) FindByIDAndUserID(id string, userID string) (*Categ
 }
 
 type Category struct {
-	ID        string `json:"id"`
-	GroupID   string `json:"group_id"`
-	UserID    string `json:"user_id"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	Icon      string `json:"icon"`
-	IsDefault bool   `json:"is_default"`
+	ID        string    `json:"id"`
+	GroupID   string    `json:"group_id"`
+	UserID    string    `json:"user_id"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	Icon      string    `json:"icon"`
+	IsDefault bool      `json:"is_default"`
 	CreatedAt time.Time `json:"created_at"`
 }

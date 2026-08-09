@@ -107,6 +107,7 @@ Personal Finance Tracker API
 	summaryRepo := repository.NewSummaryRepository(connPool)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(connPool)
 	installmentRepo := repository.NewInstallmentRepository(connPool)
+	savingsRepo := repository.NewSavingsRepository(connPool)
 	groupRepo := repository.NewGroupRepository(connPool)
 	aiInsightRepo := repository.NewAIInsightRepository(connPool)
 
@@ -114,8 +115,9 @@ Personal Finance Tracker API
 	authService := service.NewAuthService(userRepo, categoryRepo, refreshTokenRepo, groupRepo)
 	categoryService := service.NewCategoryService(categoryRepo)
 	transactionService := service.NewTransactionService(transactionRepo, categoryRepo)
-	summaryService := service.NewSummaryService(summaryRepo)
+	summaryService := service.NewSummaryService(summaryRepo, savingsRepo)
 	installmentService := service.NewInstallmentService(installmentRepo, categoryRepo)
+	savingsService := service.NewSavingsService(savingsRepo, categoryRepo)
 	groupService := service.NewGroupService(groupRepo, userRepo)
 	aiInsightService := service.NewAIInsightService(aiInsightRepo, cfg.GeminiAPIKey, cfg.AIModel, cfg.AIPromptVersion, cfg.AITimeout, cfg.AIInsightsEnabled)
 
@@ -153,7 +155,7 @@ Personal Finance Tracker API
 	})
 
 	// API routes
-	router.SetupRoutes(app, authService, categoryService, transactionService, summaryService, installmentService, groupService, aiInsightService)
+	router.SetupRoutes(app, authService, categoryService, transactionService, summaryService, installmentService, savingsService, groupService, aiInsightService)
 
 	// Signal handling goroutine (pola user)
 	go func() {

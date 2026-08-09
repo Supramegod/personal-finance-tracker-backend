@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
@@ -234,6 +235,13 @@ func (h *TransactionHandler) Delete(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.transactionService.Delete(id, groupID); err != nil {
+		// Transaksi tabungan hanya bisa dibatalkan lewat endpoint tabungan —
+		// itu konflik keadaan, bukan "tidak ditemukan".
+		if errors.Is(err, repository.ErrTransferTransaction) {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "transaction not found",
 		})

@@ -34,7 +34,7 @@ func TestCreateExpenseTransaction(t *testing.T) {
 	tx, err := testTxSvc.Create(service.CreateTransactionInput{
 		GroupID:         testGroupID,
 		UserID:          testUserID,
-		CategoryID:      testCatID,
+		CategoryID:      testExpenseCatID,
 		Type:            "expense",
 		Amount:          25000,
 		TransactionDate: "2026-06-19",
@@ -189,7 +189,7 @@ func TestDeleteTransaction(t *testing.T) {
 	tx, err := testTxSvc.Create(service.CreateTransactionInput{
 		GroupID:         testGroupID,
 		UserID:          testUserID,
-		CategoryID:      testCatID,
+		CategoryID:      testExpenseCatID,
 		Type:            "expense",
 		Amount:          50000,
 		TransactionDate: "2026-06-19",

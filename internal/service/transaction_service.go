@@ -127,6 +127,12 @@ func (s *TransactionService) Update(input UpdateTransactionInput) (*repository.T
 	if err != nil {
 		return nil, errors.New("transaction not found")
 	}
+	// Transaksi hasil mutasi tabungan tidak boleh diubah dari sini: nominalnya
+	// terikat ke baris savings_entries, dan mengubah salah satunya saja membuat
+	// saldo pot tidak lagi cocok dengan ledger.
+	if existing.IsTransfer {
+		return nil, repository.ErrTransferTransaction
+	}
 
 	// Validate
 	input.Type = strings.ToLower(input.Type)

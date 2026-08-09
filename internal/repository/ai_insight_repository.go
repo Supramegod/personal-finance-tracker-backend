@@ -106,7 +106,8 @@ func (r *AIInsightRepository) Transactions(groupID string, from, to time.Time) (
 	rows, err := r.pool.Query(context.Background(), `
 		SELECT t.transaction_date, t.type, t.amount, c.name
 		FROM transactions t JOIN categories c ON c.id=t.category_id
-		WHERE t.group_id=$1 AND t.deleted_at IS NULL AND t.transaction_date >= $2 AND t.transaction_date < $3
+		WHERE t.group_id=$1 AND t.deleted_at IS NULL AND t.is_transfer = false
+		  AND t.transaction_date >= $2 AND t.transaction_date < $3
 		ORDER BY t.transaction_date`, groupID, from, to)
 	if err != nil {
 		return nil, err
