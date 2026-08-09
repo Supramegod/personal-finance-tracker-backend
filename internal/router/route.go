@@ -13,7 +13,7 @@ import (
 // SetupRoutes mendaftarkan semua endpoint API ke aplikasi Fiber.
 // Endpoint dibagi menjadi:
 //   - Public: auth (login, refresh, logout)
-//   - Protected: categories, transactions, summary (memerlukan JWT)
+//   - Protected: categories, transactions, summary, savings (memerlukan JWT)
 func SetupRoutes(
 	app *fiber.App,
 	authService *service.AuthService,
@@ -21,6 +21,7 @@ func SetupRoutes(
 	transactionService *service.TransactionService,
 	summaryService *service.SummaryService,
 	installmentService *service.InstallmentService,
+	savingsService *service.SavingsService,
 	groupService *service.GroupService,
 	aiInsightService *service.AIInsightService,
 ) {
@@ -67,6 +68,17 @@ func SetupRoutes(
 		protected.Get("/summary/report", summaryHandler.Report)
 		protected.Get("/summary/ai-insights", aiHandler.ByMonth)
 		protected.Get("/summary/ai-insights/latest", aiHandler.Latest)
+
+		// Savings / Tabungan
+		savingsHandler := handler.NewSavingsHandler(savingsService)
+		protected.Get("/savings", savingsHandler.List)
+		protected.Post("/savings", savingsHandler.Create)
+		protected.Get("/savings/:id", savingsHandler.GetByID)
+		protected.Put("/savings/:id", savingsHandler.Update)
+		protected.Delete("/savings/:id", savingsHandler.Delete)
+		protected.Post("/savings/:id/deposit", savingsHandler.Deposit)
+		protected.Post("/savings/:id/withdraw", savingsHandler.Withdraw)
+		protected.Delete("/savings/:id/entries/:entryId", savingsHandler.DeleteEntry)
 
 		// Installments / Cicilan
 		installmentHandler := handler.NewInstallmentHandler(installmentService)

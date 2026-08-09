@@ -60,3 +60,34 @@ type RefreshToken struct {
 	RevokedAt *time.Time
 	CreatedAt time.Time
 }
+
+// SavingsGoal merepresentasikan satu pot tabungan.
+// TargetAmount/TargetDate nullable: pot tanpa target tetap sah.
+type SavingsGoal struct {
+	ID           string
+	GroupID      string
+	UserID       string
+	Name         string
+	TargetAmount *float64
+	TargetDate   *time.Time
+	Icon         string
+	Color        string
+	Status       string // "active", "completed", or "archived"
+	Note         string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// SavingsEntry merepresentasikan satu mutasi tabungan (setoran/penarikan).
+// TransactionID menunjuk transaksi bertanda transfer yang tercipta bersamanya.
+type SavingsEntry struct {
+	ID            string
+	GoalID        string
+	UserID        string
+	TransactionID *string
+	Direction     string // "deposit" or "withdraw"
+	Amount        float64
+	EntryDate     time.Time
+	Note          string
+	CreatedAt     time.Time
+}

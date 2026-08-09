@@ -88,10 +88,14 @@ func (s *GroupService) CreateUser(ownerUserID, activeGroupID, email, password, f
 		return nil, errors.New("failed to hash password")
 	}
 
+	// Kepemilikan dicatat di baris user itu sendiri, bukan disimpulkan dari
+	// keanggotaan kelompok. Inilah yang membuat user tetap muncul di kolam
+	// walau nanti dikeluarkan dari semua kelompok.
 	user := &repository.User{
 		Email:        email,
 		PasswordHash: hashed,
 		FullName:     fullName,
+		OwnerUserID:  &ownerUserID,
 	}
 
 	if err := s.userRepo.Create(user); err != nil {

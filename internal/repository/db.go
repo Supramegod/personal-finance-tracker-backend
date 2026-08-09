@@ -198,6 +198,7 @@ func (db *DB) seedDefaultCategories(groupID, creatorUserID string) error {
 		{"Investasi", "income", "investment"},
 		{"Hadiah", "income", "gift"},
 		{"Lainnya", "income", "other_income"},
+		{"Tarik Tabungan", "income", "savings_withdraw"},
 		// Expense
 		{"Makan & Minum", "expense", "food"},
 		{"Transportasi", "expense", "transport"},

@@ -46,7 +46,16 @@ Thumbs.db
 *.swp
 *.swo
 
+# ─── Tooling agen (Claude Code / ECC) ─────────────
+# Config harness per-mesin, bukan bagian dari aplikasi. Kalau ECC di-install
+# project-scoped, folder ini bisa berisi ratusan file yang di-vendor — jangan
+# sampai ikut ter-commit.
+.claude/
+
 # ─── Yang SENGAJA TIDAK diabaikan ─────────────────
+# CLAUDE.md      — mendokumentasikan repo ini (perintah build/test, sqlc,
+#                  gotcha migrations), jadi tetap di-commit meski .claude/
+#                  diabaikan.
 # db/migrations/  — dibutuhkan saat runtime, RunMigrations() membacanya
 #                   dari disk lewat path relatif, bukan di-embed.
 # docs/           — docs.go dan swagger.json diimpor sebagai package Go;

@@ -36,6 +36,21 @@ definitions:
       title:
         type: string
     type: object
+  handler.createSavingsRequest:
+    properties:
+      color:
+        type: string
+      icon:
+        type: string
+      name:
+        type: string
+      note:
+        type: string
+      target_amount:
+        type: number
+      target_date:
+        type: string
+    type: object
   handler.createTransactionRequest:
     properties:
       amount:
@@ -70,9 +85,35 @@ definitions:
       refresh_token:
         type: string
     type: object
+  handler.savingsEntryRequest:
+    properties:
+      amount:
+        type: number
+      date:
+        type: string
+      note:
+        type: string
+    type: object
   handler.switchGroupRequest:
     properties:
       group_id:
+        type: string
+    type: object
+  handler.updateSavingsRequest:
+    properties:
+      color:
+        type: string
+      icon:
+        type: string
+      name:
+        type: string
+      note:
+        type: string
+      status:
+        type: string
+      target_amount:
+        type: number
+      target_date:
         type: string
     type: object
   handler.updateTransactionRequest:
@@ -179,6 +220,59 @@ definitions:
         type: number
       total_income:
         type: number
+      total_savings:
+        description: |-
+          TotalSavings adalah setoran dikurangi penarikan tabungan pada periode itu.
+          Bisa negatif kalau penarikan lebih besar dari setoran.
+        type: number
+    type: object
+  repository.SavingsEntry:
+    properties:
+      amount:
+        type: number
+      created_at:
+        type: string
+      direction:
+        type: string
+      entry_date:
+        type: string
+      goal_id:
+        type: string
+      id:
+        type: string
+      note:
+        type: string
+      transaction_id:
+        type: string
+      user_id:
+        type: string
+    type: object
+  repository.SavingsGoal:
+    properties:
+      color:
+        type: string
+      created_at:
+        type: string
+      group_id:
+        type: string
+      icon:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      note:
+        type: string
+      status:
+        type: string
+      target_amount:
+        type: number
+      target_date:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
     type: object
   repository.Transaction:
     properties:
@@ -196,6 +290,11 @@ definitions:
         type: string
       id:
         type: string
+      is_transfer:
+        description: |-
+          IsTransfer menandai baris hasil mutasi tabungan. Klien memakainya untuk
+          menyembunyikan tombol ubah/hapus — keduanya ditolak backend.
+        type: boolean
       note:
         type: string
       transaction_date:
@@ -223,6 +322,10 @@ definitions:
   service.BalanceResponse:
     properties:
       balance:
+        type: number
+      net_worth:
+        type: number
+      savings_total:
         type: number
     type: object
   service.CategorySpending:
@@ -328,6 +431,8 @@ definitions:
       total_expense:
         type: number
       total_income:
+        type: number
+      total_savings:
         type: number
     type: object
 host: localhost:8080
@@ -815,6 +920,301 @@ paths:
       summary: Bayar cicilan bulan ini
       tags:
       - Installments
+  /savings:
+    get:
+      description: Mendapatkan semua pot tabungan milik kelompok beserta progresnya
+      parameters:
+      - description: 'Filter status: active, completed, archived'
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Daftar tabungan
+      tags:
+      - Savings
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Membuat pot tabungan. target_amount dan target_date opsional —
+        pot tanpa target (mis. dana darurat) tetap sah.
+      parameters:
+      - description: Data tabungan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createSavingsRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/repository.SavingsGoal'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Buat tabungan baru
+      tags:
+      - Savings
+  /savings/{id}:
+    delete:
+      description: |-
+        Menghapus pot tabungan. Ditolak bila saldonya masih ada —
+        tarik seluruh saldo lebih dulu. Transaksi yang sudah tercatat
+        TIDAK ikut terhapus.
+      parameters:
+      - description: ID Tabungan
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus tabungan
+      tags:
+      - Savings
+    get:
+      description: Mendapatkan satu pot tabungan beserta riwayat mutasinya
+      parameters:
+      - description: ID Tabungan
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Detail tabungan
+      tags:
+      - Savings
+    put:
+      consumes:
+      - application/json
+      description: |-
+        Mengubah nama, target, tenggat, atau status pot tabungan.
+        Saldo tidak bisa diubah dari sini — saldo adalah turunan mutasi.
+      parameters:
+      - description: ID Tabungan
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data tabungan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.updateSavingsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/repository.SavingsGoal'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ubah tabungan
+      tags:
+      - Savings
+  /savings/{id}/deposit:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Mencatat setoran. Membuat transaksi pengeluaran bertanda
+        transfer: saldo kas turun, tapi tidak dihitung sebagai
+        pengeluaran di laporan.
+      parameters:
+      - description: ID Tabungan
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Nominal setoran
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.savingsEntryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/repository.SavingsEntry'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Setor ke tabungan
+      tags:
+      - Savings
+  /savings/{id}/entries/{entryId}:
+    delete:
+      description: |-
+        Menghapus satu setoran/penarikan beserta transaksi yang
+        tercipta bersamanya. Ini satu-satunya cara membatalkan mutasi —
+        transaksinya tidak bisa dihapus dari halaman Transaksi.
+      parameters:
+      - description: ID Tabungan
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID Mutasi
+        in: path
+        name: entryId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Batalkan mutasi tabungan
+      tags:
+      - Savings
+  /savings/{id}/withdraw:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Mencatat penarikan. Membuat transaksi pemasukan bertanda
+        transfer. Ditolak bila melebihi saldo pot.
+      parameters:
+      - description: ID Tabungan
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Nominal penarikan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.savingsEntryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/repository.SavingsEntry'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tarik dari tabungan
+      tags:
+      - Savings
   /summary/ai-insights:
     get:
       parameters:

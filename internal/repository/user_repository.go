@@ -21,10 +21,10 @@ func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
 // updated_at hasil generate DB via RETURNING.
 func (r *UserRepository) Create(u *User) error {
 	err := r.pool.QueryRow(context.Background(),
-		`INSERT INTO users (email, password_hash, full_name)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO users (email, password_hash, full_name, owner_user_id)
+		 VALUES ($1, $2, $3, $4)
 		 RETURNING id, created_at, updated_at`,
-		u.Email, u.PasswordHash, u.FullName).Scan(
+		u.Email, u.PasswordHash, u.FullName, u.OwnerUserID).Scan(
 		&u.ID, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create user: %w", err)
@@ -86,4 +86,9 @@ type User struct {
 	FullName     string    `json:"full_name"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	// OwnerUserID adalah owner yang membuat akun ini. Kepemilikan berdiri
+	// sendiri, terlepas dari kelompok mana pun, supaya user tetap terlihat di
+	// kolam meski sedang tidak menjadi anggota kelompok apa pun.
+	// nil untuk user yang mendaftar sendiri.
+	OwnerUserID *string `json:"-"`
 }

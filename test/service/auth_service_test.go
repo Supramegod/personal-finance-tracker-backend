@@ -18,9 +18,14 @@ var (
 	testTxSvc        *service.TransactionService
 	testSummaryRepo  *repository.SummaryRepository
 	testSummarySvc   *service.SummaryService
+	testSavingsRepo  *repository.SavingsRepository
+	testSavingsSvc   *service.SavingsService
 	testUserID       string
 	testGroupID      string
-	testCatID        string
+	testCatID        string // kategori income
+	testExpenseCatID string // kategori expense
+	testAdminEmail   string
+	testAdminPass    string
 )
 
 func TestMain(m *testing.M) {
@@ -29,8 +34,15 @@ func TestMain(m *testing.M) {
 	os.Setenv("JWT_ACCESS_EXPIRY", "15m")
 	os.Setenv("JWT_REFRESH_EXPIRY", "168h") // "7d" bukan unit valid time.ParseDuration
 
-	// Setup shared database
-	dbURL := "postgresql://finance:finance123@localhost:5432/finance_tracker?sslmode=disable"
+	// Setup shared database.
+	// URL bisa dioverride lewat TEST_DATABASE_URL — password compose berasal
+	// dari .env dan tidak sama di setiap mesin, jadi tanpa override seluruh
+	// suite ini diam-diam ter-skip (NewDB gagal → os.Exit(0)) dan kelihatan
+	// "ok" padahal tidak satu test pun jalan.
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgresql://finance:finance123@localhost:5432/finance_tracker?sslmode=disable"
+	}
 	db, err := repository.NewDB(dbURL)
 	if err != nil {
 		os.Exit(0) // Skip if DB not available
@@ -40,15 +52,26 @@ func TestMain(m *testing.M) {
 	testCategoryRepo = repository.NewCategoryRepository(db.Pool)
 	testTxRepo = repository.NewTransactionRepository(db.Pool)
 	testSummaryRepo = repository.NewSummaryRepository(db.Pool)
+	testSavingsRepo = repository.NewSavingsRepository(db.Pool)
 
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db.Pool)
 	testGroupRepo = repository.NewGroupRepository(db.Pool)
 	testAuthSvc = service.NewAuthService(testUserRepo, testCategoryRepo, refreshTokenRepo, testGroupRepo)
 	testTxSvc = service.NewTransactionService(testTxRepo, testCategoryRepo)
-	testSummarySvc = service.NewSummaryService(testSummaryRepo)
+	testSummarySvc = service.NewSummaryService(testSummaryRepo, testSavingsRepo)
+	testSavingsSvc = service.NewSavingsService(testSavingsRepo, testCategoryRepo)
 
-	// Get admin user ID
-	user, err := testUserRepo.FindByEmail("admin@example.com")
+	// Get admin user ID. Emailnya ikut ADMIN_EMAIL supaya test menemukan admin
+	// yang benar-benar ter-seed di lingkungan ini, bukan alamat contoh.
+	testAdminEmail = os.Getenv("ADMIN_EMAIL")
+	if testAdminEmail == "" {
+		testAdminEmail = "admin@example.com"
+	}
+	testAdminPass = os.Getenv("ADMIN_PASSWORD")
+	if testAdminPass == "" {
+		testAdminPass = "admin123"
+	}
+	user, err := testUserRepo.FindByEmail(testAdminEmail)
 	if err == nil {
 		testUserID = user.ID
 		// Get category ID (scoping kini berbasis group)
@@ -57,6 +80,10 @@ func TestMain(m *testing.M) {
 			cats, err := testCategoryRepo.FindByGroupID(groupID, "income")
 			if err == nil && len(cats) > 0 {
 				testCatID = cats[0].ID
+			}
+			expenseCats, err := testCategoryRepo.FindByGroupID(groupID, "expense")
+			if err == nil && len(expenseCats) > 0 {
+				testExpenseCatID = expenseCats[0].ID
 			}
 		}
 	}
@@ -67,7 +94,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestLoginSuccess(t *testing.T) {
-	result, err := testAuthSvc.Login("admin@example.com", "admin123")
+	result, err := testAuthSvc.Login(testAdminEmail, testAdminPass)
 	if err != nil {
 		t.Fatalf("Login should succeed: %v", err)
 	}
@@ -78,13 +105,13 @@ func TestLoginSuccess(t *testing.T) {
 	if result.RefreshToken == "" {
 		t.Error("Refresh token should not be empty")
 	}
-	if result.User.Email != "admin@example.com" {
-		t.Errorf("Expected email admin@example.com, got %s", result.User.Email)
+	if result.User.Email != testAdminEmail {
+		t.Errorf("Expected email %s, got %s", testAdminEmail, result.User.Email)
 	}
 }
 
 func TestLoginWrongPassword(t *testing.T) {
-	_, err := testAuthSvc.Login("admin@example.com", "wrongpassword")
+	_, err := testAuthSvc.Login(testAdminEmail, "wrongpassword")
 	if err == nil {
 		t.Fatal("Login should fail with wrong password")
 	}
@@ -105,14 +132,14 @@ func TestLoginEmptyEmail(t *testing.T) {
 }
 
 func TestLoginEmptyPassword(t *testing.T) {
-	_, err := testAuthSvc.Login("admin@example.com", "")
+	_, err := testAuthSvc.Login(testAdminEmail, "")
 	if err == nil {
 		t.Fatal("Login should fail with empty password")
 	}
 }
 
 func TestRefreshToken(t *testing.T) {
-	loginResult, err := testAuthSvc.Login("admin@example.com", "admin123")
+	loginResult, err := testAuthSvc.Login(testAdminEmail, testAdminPass)
 	if err != nil {
 		t.Fatalf("Login should succeed: %v", err)
 	}

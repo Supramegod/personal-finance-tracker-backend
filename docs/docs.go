@@ -764,6 +764,444 @@ const docTemplate = `{
                 }
             }
         },
+        "/savings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan semua pot tabungan milik kelompok beserta progresnya",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Savings"
+                ],
+                "summary": "Daftar tabungan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter status: active, completed, archived",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membuat pot tabungan. target_amount dan target_date opsional —\npot tanpa target (mis. dana darurat) tetap sah.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Savings"
+                ],
+                "summary": "Buat tabungan baru",
+                "parameters": [
+                    {
+                        "description": "Data tabungan",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.createSavingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/repository.SavingsGoal"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/savings/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan satu pot tabungan beserta riwayat mutasinya",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Savings"
+                ],
+                "summary": "Detail tabungan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID Tabungan",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengubah nama, target, tenggat, atau status pot tabungan.\nSaldo tidak bisa diubah dari sini — saldo adalah turunan mutasi.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Savings"
+                ],
+                "summary": "Ubah tabungan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID Tabungan",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data tabungan",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.updateSavingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/repository.SavingsGoal"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus pot tabungan. Ditolak bila saldonya masih ada —\ntarik seluruh saldo lebih dulu. Transaksi yang sudah tercatat\nTIDAK ikut terhapus.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Savings"
+                ],
+                "summary": "Hapus tabungan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID Tabungan",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/savings/{id}/deposit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mencatat setoran. Membuat transaksi pengeluaran bertanda\ntransfer: saldo kas turun, tapi tidak dihitung sebagai\npengeluaran di laporan.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Savings"
+                ],
+                "summary": "Setor ke tabungan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID Tabungan",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Nominal setoran",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.savingsEntryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/repository.SavingsEntry"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/savings/{id}/entries/{entryId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus satu setoran/penarikan beserta transaksi yang\ntercipta bersamanya. Ini satu-satunya cara membatalkan mutasi —\ntransaksinya tidak bisa dihapus dari halaman Transaksi.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Savings"
+                ],
+                "summary": "Batalkan mutasi tabungan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID Tabungan",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID Mutasi",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/savings/{id}/withdraw": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mencatat penarikan. Membuat transaksi pemasukan bertanda\ntransfer. Ditolak bila melebihi saldo pot.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Savings"
+                ],
+                "summary": "Tarik dari tabungan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID Tabungan",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Nominal penarikan",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.savingsEntryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/repository.SavingsEntry"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/summary/ai-insights": {
             "get": {
                 "security": [
@@ -1336,6 +1774,29 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.createSavingsRequest": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "target_amount": {
+                    "type": "number"
+                },
+                "target_date": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.createTransactionRequest": {
             "type": "object",
             "properties": {
@@ -1389,10 +1850,50 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.savingsEntryRequest": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.switchGroupRequest": {
             "type": "object",
             "properties": {
                 "group_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.updateSavingsRequest": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "target_amount": {
+                    "type": "number"
+                },
+                "target_date": {
                     "type": "string"
                 }
             }
@@ -1555,6 +2056,83 @@ const docTemplate = `{
                 },
                 "total_income": {
                     "type": "number"
+                },
+                "total_savings": {
+                    "description": "TotalSavings adalah setoran dikurangi penarikan tabungan pada periode itu.\nBisa negatif kalau penarikan lebih besar dari setoran.",
+                    "type": "number"
+                }
+            }
+        },
+        "repository.SavingsEntry": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "direction": {
+                    "type": "string"
+                },
+                "entry_date": {
+                    "type": "string"
+                },
+                "goal_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "transaction_id": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "repository.SavingsGoal": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "target_amount": {
+                    "type": "number"
+                },
+                "target_date": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
                 }
             }
         },
@@ -1581,6 +2159,10 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "is_transfer": {
+                    "description": "IsTransfer menandai baris hasil mutasi tabungan. Klien memakainya untuk\nmenyembunyikan tombol ubah/hapus — keduanya ditolak backend.",
+                    "type": "boolean"
                 },
                 "note": {
                     "type": "string"
@@ -1623,6 +2205,12 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "balance": {
+                    "type": "number"
+                },
+                "net_worth": {
+                    "type": "number"
+                },
+                "savings_total": {
                     "type": "number"
                 }
             }
@@ -1784,6 +2372,9 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "total_income": {
+                    "type": "number"
+                },
+                "total_savings": {
                     "type": "number"
                 }
             }

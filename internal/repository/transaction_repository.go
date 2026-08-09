@@ -2,11 +2,23 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+var (
+	// ErrTransactionNotFound dikembalikan bila transaksi tidak ada / bukan milik kelompok.
+	ErrTransactionNotFound = errors.New("transaction not found")
+	// ErrTransferTransaction dikembalikan bila transaksi hasil mutasi tabungan
+	// hendak diubah/dihapus lewat endpoint transaksi biasa. Kalau diizinkan,
+	// saldo pot tabungan langsung melenceng dari ledger — pembatalannya harus
+	// lewat DELETE /savings/:id/entries/:entryId yang menangani keduanya.
+	ErrTransferTransaction = errors.New("savings transactions can only be modified from the savings page")
 )
 
 type TransactionRepository struct {
@@ -74,7 +86,7 @@ func (r *TransactionRepository) List(params ListTransactionsParams) ([]Transacti
 	dataQuery := fmt.Sprintf(`
 		SELECT t.id, t.user_id, t.category_id, t.type, t.amount,
 			   t.transaction_date, t.note, t.created_at, t.updated_at,
-			   COALESCE(c.name, '') as category_name
+			   t.is_transfer, COALESCE(c.name, '') as category_name
 		FROM transactions t
 		LEFT JOIN categories c ON t.category_id = c.id
 		WHERE %s
@@ -93,7 +105,7 @@ func (r *TransactionRepository) List(params ListTransactionsParams) ([]Transacti
 	for rows.Next() {
 		var t Transaction
 		if err := rows.Scan(&t.ID, &t.UserID, &t.CategoryID, &t.Type, &t.Amount,
-			&t.TransactionDate, &t.Note, &t.CreatedAt, &t.UpdatedAt, &t.CategoryName); err != nil {
+			&t.TransactionDate, &t.Note, &t.CreatedAt, &t.UpdatedAt, &t.IsTransfer, &t.CategoryName); err != nil {
 			return nil, 0, err
 		}
 		transactions = append(transactions, t)
@@ -117,14 +129,17 @@ func (r *TransactionRepository) FindByID(id, groupID string) (*Transaction, erro
 	err := r.pool.QueryRow(context.Background(),
 		`SELECT t.id, t.group_id, t.user_id, t.category_id, t.type, t.amount,
 				t.transaction_date, t.note, t.created_at, t.updated_at,
-				COALESCE(c.name, '') as category_name
+				t.is_transfer, COALESCE(c.name, '') as category_name
 		 FROM transactions t
 		 LEFT JOIN categories c ON t.category_id = c.id
 		 WHERE t.id = $1 AND t.group_id = $2 AND t.deleted_at IS NULL`, id, groupID).Scan(
 		&t.ID, &t.GroupID, &t.UserID, &t.CategoryID, &t.Type, &t.Amount,
-		&t.TransactionDate, &t.Note, &t.CreatedAt, &t.UpdatedAt, &t.CategoryName)
+		&t.TransactionDate, &t.Note, &t.CreatedAt, &t.UpdatedAt, &t.IsTransfer, &t.CategoryName)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrTransactionNotFound
+		}
+		return nil, fmt.Errorf("find transaction %s: %w", id, err)
 	}
 	return t, nil
 }
@@ -138,10 +153,32 @@ func (r *TransactionRepository) Update(t *Transaction) error {
 	return err
 }
 
+// Delete men-soft-delete transaksi. Baris hasil mutasi tabungan ditolak: saldo
+// pot dihitung dari savings_entries, jadi menghapus transaksinya saja akan
+// membuat kas dan tabungan tidak lagi cocok.
 func (r *TransactionRepository) Delete(id, groupID string) error {
-	_, err := r.pool.Exec(context.Background(),
-		`UPDATE transactions SET deleted_at = NOW() WHERE id = $1 AND group_id = $2 AND deleted_at IS NULL`, id, groupID)
-	return err
+	ctx := context.Background()
+
+	var isTransfer bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT is_transfer FROM transactions
+		 WHERE id = $1 AND group_id = $2 AND deleted_at IS NULL`, id, groupID).Scan(&isTransfer)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrTransactionNotFound
+		}
+		return fmt.Errorf("find transaction %s: %w", id, err)
+	}
+	if isTransfer {
+		return ErrTransferTransaction
+	}
+
+	if _, err := r.pool.Exec(ctx,
+		`UPDATE transactions SET deleted_at = NOW()
+		 WHERE id = $1 AND group_id = $2 AND deleted_at IS NULL`, id, groupID); err != nil {
+		return fmt.Errorf("delete transaction %s: %w", id, err)
+	}
+	return nil
 }
 
 type CalendarDay struct {
@@ -213,5 +250,8 @@ type Transaction struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
-	CategoryName    string     `json:"category_name"`
+	// IsTransfer menandai baris hasil mutasi tabungan. Klien memakainya untuk
+	// menyembunyikan tombol ubah/hapus — keduanya ditolak backend.
+	IsTransfer   bool   `json:"is_transfer"`
+	CategoryName string `json:"category_name"`
 }
