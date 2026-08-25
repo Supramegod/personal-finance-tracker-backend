@@ -141,6 +141,39 @@ func (s *AIInsightService) SetConsent(groupID, userID string, enabled bool) (*re
 	return consent, err
 }
 
+// regenerateCooldown menahan tombol "buat ulang" supaya satu klik beruntun
+// tidak membakar kuota Gemini. Satu regenerasi = satu panggilan berbayar.
+const regenerateCooldown = 5 * time.Minute
+
+var ErrRegenerateFutureMonth = errors.New("month is not finished yet")
+
+// Regenerate memaksa satu bulan dibuat ulang atas permintaan owner kelompok.
+//
+// Kembali segera setelah baris disiapkan; pembuatannya berjalan di latar
+// seperti jalur consent, dan klien memantau lewat polling status yang sudah
+// ada. Batas waktunya memakai perGroupTimeout() yang sama dengan scheduler,
+// jadi satu permintaan manual tidak bisa menggantung lebih lama daripada
+// sapuan terjadwal.
+func (s *AIInsightService) Regenerate(groupID, userID string, month time.Time) error {
+	if !s.enabled || s.apiKey == "" {
+		return errors.New("AI insights are not configured")
+	}
+	month = normalizeMonth(month)
+	// Bulan berjalan datanya belum lengkap, dan bulan depan belum ada apa-apa.
+	if !month.Before(normalizeMonth(time.Now())) {
+		return ErrRegenerateFutureMonth
+	}
+	if err := s.repo.PrepareRegenerate(groupID, userID, month, regenerateCooldown); err != nil {
+		return err
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), s.perGroupTimeout())
+		defer cancel()
+		_ = s.Generate(ctx, groupID, month)
+	}()
+	return nil
+}
+
 func (s *AIInsightService) Get(groupID string, month time.Time) (*InsightResponse, error) {
 	i, err := s.repo.Get(groupID, normalizeMonth(month))
 	if err != nil {
