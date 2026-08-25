@@ -95,9 +95,29 @@ Regenerate after changing handler annotations; `docs/` is generated output.
   package, not a single file. Only `swag init` takes the file path.
 - Config comes from `.env` (see `.env.example`). `.env` is not committed.
 - CI (`.github/workflows/deploy.yml`) gates on `go build ./...`, `go vet ./...`,
-  and `go test ./pkg/... -short` — then builds and pushes the Docker image.
+  and `go test ./internal/... ./pkg/... -short` — then builds and pushes the Docker image.
 - The AI insights feature (`internal/service/ai_insight_service.go`) calls
-  **Google Gemini**, not Anthropic — `GEMINI_API_KEY`, `AI_MODEL=gemini-2.5-flash-lite`.
+  **Google Gemini**, not Anthropic — `GEMINI_API_KEY`, `AI_MODEL=gemini-flash-lite-latest`.
+  The prompt itself is `internal/service/prompts/ai_insight_system.id.md`, embedded
+  via `go:embed` and rendered once against the limit constants in
+  `internal/service/ai_insight_prompt.go`. Edit the `.md`, not a Go string.
+- `AI_PROMPT_VERSION` no longer has to be bumped by hand for the prompt to take
+  effect. `effectivePromptVersion()` appends a hash of the rendered prompt, so the
+  stored `prompt_version` changes on its own whenever the text does, and `Claim()`
+  regenerates. The env var stays a human-readable label and a manual re-roll lever.
+- `gemini-flash-lite-latest` is a **moving alias** — the model behind it can change
+  with no code change, while `source_hash` only contains the literal string. A swap on
+  Google's side therefore triggers no regeneration.
+- It was picked over `gemini-flash-latest` on measurement, not taste: that alias
+  currently resolves to `gemini-3.7-flash`, where every insight call timed out past
+  300s (the old v1 prompt included, so it is queueing, not prompt size).
+  `gemini-flash-lite-latest` resolves to `gemini-3.5-flash-lite` and clears all 8 eval
+  fixtures. Re-check with `make test-ai-eval` before changing the model.
+- The insight scheduler (`cmd/server/ai_scheduler.go`) runs **on the 1st of each
+  month at 00:01 Asia/Jakarta** (`service.NextInsightRun`), plus one idempotent
+  backfill sweep at every boot. It used to be a 24h ticker from boot time, which
+  drifted with deploy time. The boot sweep is what makes a mid-month prompt change
+  visible without waiting for the 1st.
 - `internal/isapi/` is an empty placeholder (`.gitkeep` only).
 
 ## ECC surface for this repo

@@ -124,6 +124,9 @@ Personal Finance Tracker API
 	// Background goroutines
 	go StartTokenCleanup(refreshTokenRepo)
 	go StartDBHealthCheck(connPool, 5*time.Minute)
+	if cfg.AIInsightsEnabled && cfg.GeminiAPIKey != "" {
+		log.Printf("AI insights: model=%s prompt=%s", cfg.AIModel, aiInsightService.PromptVersion())
+	}
 	go StartAIInsightScheduler(aiInsightService)
 
 	// Fiber app

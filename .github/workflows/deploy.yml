@@ -33,7 +33,12 @@ jobs:
       - run: go vet ./...
       # Hanya test yang tidak butuh PostgreSQL. Test service/integration
       # perlu database dan tidak dijalankan di sini.
-      - run: go test ./pkg/... -count=1 -short
+      #
+      # internal/ IKUT: sebelumnya hanya ./pkg/... yang dijalankan, sehingga
+      # seluruh test di internal/service — termasuk assertion privasi payload
+      # AI insight — tidak pernah menjadi gerbang apa pun. Keduanya unit murni
+      # tanpa database; yang butuh database ada di test/service.
+      - run: go test ./internal/... ./pkg/... -count=1 -short
 
   build-and-push:
     needs: test

@@ -32,6 +32,6 @@ data:
   RATE_LIMIT_PER_MINUTE: "60"
 
   AI_INSIGHTS_ENABLED: "true"
-  AI_MODEL: "gemini-2.5-flash-lite"
-  AI_PROMPT_VERSION: "v1"
-  AI_TIMEOUT: "30s"
+  AI_MODEL: "gemini-flash-lite-latest"
+  AI_PROMPT_VERSION: "v2"
+  AI_TIMEOUT: "90s"
