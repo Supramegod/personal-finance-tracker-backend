@@ -68,6 +68,7 @@ func SetupRoutes(
 		protected.Get("/summary/report", summaryHandler.Report)
 		protected.Get("/summary/ai-insights", aiHandler.ByMonth)
 		protected.Get("/summary/ai-insights/latest", aiHandler.Latest)
+		protected.Post("/summary/ai-insights/regenerate", aiHandler.Regenerate)
 
 		// Savings / Tabungan
 		savingsHandler := handler.NewSavingsHandler(savingsService)

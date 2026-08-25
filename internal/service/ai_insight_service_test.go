@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -215,5 +216,43 @@ func TestPerGroupTimeoutCoversEveryAttempt(t *testing.T) {
 		if got := svc.perGroupTimeout(); got <= worstCase {
 			t.Errorf("AI_TIMEOUT=%s: perGroupTimeout %s tidak memuat %s untuk %d percobaan", httpTimeout, got, worstCase, geminiAttempts)
 		}
+	}
+}
+
+// TestRegenerateRejectsUnfinishedMonth menjaga agar tombol "buat ulang" tidak
+// bisa dipakai untuk bulan yang datanya belum lengkap.
+//
+// repo sengaja nil: penjaga bulan HARUS mengembalikan error sebelum menyentuh
+// database sama sekali, jadi test ini juga membuktikan urutan pemeriksaannya.
+func TestRegenerateRejectsUnfinishedMonth(t *testing.T) {
+	svc := NewAIInsightService(nil, "kunci", "gemini-flash-lite-latest", "v2", 30*time.Second, true)
+	now := time.Now().In(jakartaLocation())
+	cases := map[string]time.Time{
+		"bulan berjalan": normalizeMonth(now),
+		"bulan depan":    normalizeMonth(now).AddDate(0, 1, 0),
+		"tahun depan":    normalizeMonth(now).AddDate(1, 0, 0),
+	}
+	for name, month := range cases {
+		t.Run(name, func(t *testing.T) {
+			if err := svc.Regenerate("grup", "pengguna", month); !errors.Is(err, ErrRegenerateFutureMonth) {
+				t.Fatalf("Regenerate(%s) = %v, harusnya ErrRegenerateFutureMonth", month.Format("2006-01"), err)
+			}
+		})
+	}
+}
+
+// TestRegenerateRequiresConfiguration: tanpa kunci API, permintaan ditolak
+// sebelum ada baris yang diubah statusnya menjadi pending.
+func TestRegenerateRequiresConfiguration(t *testing.T) {
+	lastMonth := previousMonth(time.Now())
+	for name, svc := range map[string]*AIInsightService{
+		"fitur dimatikan": NewAIInsightService(nil, "kunci", "m", "v2", time.Second, false),
+		"kunci kosong":    NewAIInsightService(nil, "", "m", "v2", time.Second, true),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := svc.Regenerate("grup", "pengguna", lastMonth); err == nil {
+				t.Fatal("Regenerate harusnya ditolak saat AI insight tidak dikonfigurasi")
+			}
+		})
 	}
 }

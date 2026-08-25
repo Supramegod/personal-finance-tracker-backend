@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 
+	"personal-finance-tracker/internal/repository"
 	"personal-finance-tracker/internal/service"
 )
 
@@ -54,6 +56,50 @@ func (h *AIInsightHandler) Latest(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "failed to get AI insight"})
 	}
 	return c.JSON(result)
+}
+
+// Regenerate godoc
+// @Summary Buat ulang insight AI untuk satu bulan (owner-only)
+// @Tags AI Insights
+// @Produce json
+// @Security BearerAuth
+// @Param month query string true "Bulan YYYY-MM"
+// @Success 202 {object} map[string]string
+// @Router /summary/ai-insights/regenerate [post]
+func (h *AIInsightHandler) Regenerate(c *fiber.Ctx) error {
+	month, err := time.Parse("2006-01", c.Query("month"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "month must use YYYY-MM format"})
+	}
+	err = h.service.Regenerate(c.Locals("group_id").(string), c.Locals("user_id").(string), month)
+	if err != nil {
+		return regenerateError(c, err)
+	}
+	return c.Status(202).JSON(fiber.Map{"status": "processing", "period": month.Format("2006-01")})
+}
+
+// regenerateError memetakan kegagalan Regenerate ke status HTTP yang tepat.
+//
+// Dipisah dari consentError karena kondisinya berbeda dan dua di antaranya
+// bukan kesalahan pengguna: 409 berarti pekerjaan yang sama sedang berjalan,
+// 429 berarti terlalu cepat setelah regenerasi sebelumnya. Selebihnya
+// diperlakukan sebagai kegagalan internal dengan pesan generik, sejalan dengan
+// handler lain di berkas ini.
+func regenerateError(c *fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, repository.ErrRegenerateNotOwner):
+		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
+	case errors.Is(err, repository.ErrRegenerateInProgress):
+		return c.Status(409).JSON(fiber.Map{"error": err.Error()})
+	case errors.Is(err, repository.ErrRegenerateTooSoon):
+		return c.Status(429).JSON(fiber.Map{"error": err.Error()})
+	case errors.Is(err, service.ErrRegenerateFutureMonth):
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	case err.Error() == "AI insights are not configured":
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	default:
+		return c.Status(500).JSON(fiber.Map{"error": "failed to regenerate AI insight"})
+	}
 }
 
 // Consent godoc

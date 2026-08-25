@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -157,6 +158,61 @@ func (r *AIInsightRepository) Latest(groupID string) (*AIInsight, error) {
 // backoff), jadi 1 jam jauh di atas durasi kerja normal dan tidak akan
 // merebut pekerjaan yang benar-benar masih berjalan.
 const staleProcessingAfter = "1 hour"
+
+// staleProcessingWindow WAJIB sepadan dengan staleProcessingAfter di atas.
+// Yang satu dipakai di dalam SQL, yang satu dibandingkan di Go.
+const staleProcessingWindow = time.Hour
+
+var (
+	ErrRegenerateNotOwner   = errors.New("only owner can regenerate AI insights")
+	ErrRegenerateInProgress = errors.New("AI insight is already being generated")
+	ErrRegenerateTooSoon    = errors.New("AI insight was regenerated too recently")
+)
+
+// PrepareRegenerate menyiapkan satu baris untuk dibuat ulang atas permintaan
+// pengguna.
+//
+// Caranya menurunkan status ke 'pending', bukan menambah jalur klaim kedua:
+// Claim() sudah meloloskan status IN ('failed','pending') TANPA memeriksa
+// source_hash, jadi menurunkan status membuat seluruh logika idempotensi yang
+// ada terpakai apa adanya. Tanpa langkah ini, permintaan buat ulang pada bulan
+// yang datanya tidak berubah akan diam-diam tidak melakukan apa pun —
+// RowsAffected() bernilai 0 dan Generate keluar lebih awal, persis seperti
+// toggle consent yang selama ini disangka bisa dipakai untuk regenerasi.
+func (r *AIInsightRepository) PrepareRegenerate(groupID, userID string, month time.Time, cooldown time.Duration) error {
+	role, err := r.roleOf(groupID, userID)
+	if err != nil {
+		return err
+	}
+	if role != "owner" {
+		return ErrRegenerateNotOwner
+	}
+
+	var status string
+	var updatedAt time.Time
+	err = r.pool.QueryRow(context.Background(),
+		`SELECT status, updated_at FROM financial_ai_insights WHERE group_id=$1 AND period_month=$2`,
+		groupID, month).Scan(&status, &updatedAt)
+	if err == pgx.ErrNoRows {
+		// Belum pernah dibuat. Claim() yang akan menyisipkan barisnya.
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	// Baris 'processing' yang macet — proses mati di antara Claim dan
+	// Complete — tidak boleh mengunci tombol selamanya.
+	if status == "processing" && time.Since(updatedAt) < staleProcessingWindow {
+		return ErrRegenerateInProgress
+	}
+	if status == "completed" && time.Since(updatedAt) < cooldown {
+		return ErrRegenerateTooSoon
+	}
+	_, err = r.pool.Exec(context.Background(),
+		`UPDATE financial_ai_insights SET status='pending', updated_at=NOW() WHERE group_id=$1 AND period_month=$2`,
+		groupID, month)
+	return err
+}
 
 func (r *AIInsightRepository) Claim(groupID string, month time.Time, facts json.RawMessage, model, promptVersion, hash string) (bool, error) {
 	result, err := r.pool.Exec(context.Background(), `
