@@ -20,10 +20,18 @@ func StartAIInsightScheduler(insights *service.AIInsightService) {
 		}
 	}
 	// Startup melakukan backfill idempotent untuk bulan sebelumnya.
+	//
+	// Tetap dipertahankan meski jadwalnya sudah bulanan, justru karena
+	// jadwalnya bulanan: deploy pada tanggal 15 — termasuk deploy yang
+	// mengubah teks prompt — tidak perlu menunggu sampai tanggal 1 untuk
+	// terlihat hasilnya. Claim() membuat pengulangan ini tidak berbiaya.
 	run()
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
-	for range ticker.C {
+
+	for {
+		next := service.NextInsightRun(time.Now())
+		log.Printf("AI insight scheduler: sapuan berikutnya %s", next.Format(time.RFC3339))
+		timer := time.NewTimer(time.Until(next))
+		<-timer.C
 		run()
 	}
 }

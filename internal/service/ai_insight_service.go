@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -58,6 +59,47 @@ type InsightResponse struct {
 	Error       *string          `json:"error,omitempty"`
 }
 
+// Tipe di bawah hanya dikirim ke model, tidak pernah disimpan di kolom facts
+// maupun dikembalikan ke klien. InsightFacts sengaja dibiarkan utuh supaya
+// InsightResponse, panel React, model Flutter, dan swagger tidak ikut berubah.
+type CategoryChange struct {
+	Name           string   `json:"name"`
+	Amount         float64  `json:"amount"`
+	PreviousAmount float64  `json:"previous_amount"`
+	ChangePercent  *float64 `json:"change_percent"`
+	IsNew          bool     `json:"is_new"`
+}
+
+type WeeklyFlow struct {
+	Week    int     `json:"week"`
+	Expense float64 `json:"expense"`
+	Income  float64 `json:"income"`
+}
+
+type LargestExpense struct {
+	Date     string  `json:"date"`
+	Category string  `json:"category"`
+	Amount   float64 `json:"amount"`
+}
+
+type insightInput struct {
+	Period                     string           `json:"period"`
+	PeriodLabel                string           `json:"period_label"`
+	Currency                   string           `json:"currency"`
+	DaysInPeriod               int              `json:"days_in_period"`
+	HasPreviousMonth           bool             `json:"has_previous_month"`
+	PreviousTotalIncome        *float64         `json:"previous_total_income,omitempty"`
+	PreviousTotalExpense       *float64         `json:"previous_total_expense,omitempty"`
+	Facts                      InsightFacts     `json:"facts"`
+	CategoryChanges            []CategoryChange `json:"category_changes"`
+	Weekly                     []WeeklyFlow     `json:"weekly"`
+	LargestExpenses            []LargestExpense `json:"largest_expenses"`
+	ExpenseTransactionCount    int              `json:"expense_transaction_count"`
+	IncomeTransactionCount     int              `json:"income_transaction_count"`
+	ActiveDays                 int              `json:"active_days"`
+	WeekendExpenseSharePercent float64          `json:"weekend_expense_share_percent"`
+}
+
 type AIInsightService struct {
 	repo                         *repository.AIInsightRepository
 	client                       *http.Client
@@ -66,8 +108,13 @@ type AIInsightService struct {
 }
 
 func NewAIInsightService(repo *repository.AIInsightRepository, apiKey, model, promptVersion string, timeout time.Duration, enabled bool) *AIInsightService {
-	return &AIInsightService{repo: repo, client: &http.Client{Timeout: timeout}, apiKey: apiKey, model: model, promptVersion: promptVersion, enabled: enabled}
+	return &AIInsightService{repo: repo, client: &http.Client{Timeout: timeout}, apiKey: apiKey, model: model, promptVersion: effectivePromptVersion(promptVersion), enabled: enabled}
 }
+
+// PromptVersion mengembalikan versi efektif — label dari env digabung sidik
+// jari isi prompt. Dicatat sekali saat startup supaya deploy yang mengubah
+// prompt terlihat di log tanpa perlu query database.
+func (s *AIInsightService) PromptVersion() string { return s.promptVersion }
 
 func (s *AIInsightService) GetConsent(groupID, userID string) (*repository.AIConsent, error) {
 	consent, err := s.repo.GetConsent(groupID, userID)
@@ -123,7 +170,7 @@ func (s *AIInsightService) GeneratePreviousMonthForEnabled(ctx context.Context, 
 		// context dipakai bersama untuk seluruh sapuan, sehingga begitu
 		// batas itu habis SEMUA grup yang belum sempat diproses langsung
 		// ditandai gagal — grup yang lambat menjatuhkan grup sesudahnya.
-		groupCtx, cancel := context.WithTimeout(ctx, perGroupTimeout)
+		groupCtx, cancel := context.WithTimeout(ctx, s.perGroupTimeout())
 		err := s.Generate(groupCtx, groupID, month)
 		cancel()
 		if err != nil { /* lanjutkan grup berikutnya */
@@ -133,12 +180,22 @@ func (s *AIInsightService) GeneratePreviousMonthForEnabled(ctx context.Context, 
 	return nil
 }
 
-// perGroupTimeout membatasi satu grup dalam sapuan terjadwal.
+// perGroupTimeout membatasi satu grup dalam sapuan terjadwal, DITURUNKAN dari
+// AI_TIMEOUT alih-alih ditulis sebagai angka tetap.
 //
-// Batas atas kerja normal satu grup ~100 detik: 3 percobaan x timeout HTTP
-// 30 detik, ditambah backoff 1s dan 2s. 3 menit memberi ruang aman tanpa
-// membiarkan satu grup menggantung tak terbatas.
-const perGroupTimeout = 3 * time.Minute
+// Sebelumnya nilainya konstan 3 menit, dihitung tangan dari asumsi AI_TIMEOUT
+// 30 detik. Begitu AI_TIMEOUT dinaikkan melewati ~55 detik, tiga percobaan
+// tidak lagi muat dalam 3 menit: scheduler memotong grup di tengah percobaan
+// kedua lalu menandainya gagal — bukan karena Gemini bermasalah, melainkan
+// karena dua konstanta yang tidak lagi sepakat. Menurunkannya membuat
+// keduanya mustahil berselisih.
+//
+// backoffTotal adalah jumlah jeda antar percobaan (1s + 2s untuk 3 percobaan);
+// marginnya menutup pembangunan payload dan penulisan hasil ke database.
+func (s *AIInsightService) perGroupTimeout() time.Duration {
+	const backoffTotal, margin = 3 * time.Second, 30 * time.Second
+	return time.Duration(geminiAttempts)*s.client.Timeout + backoffTotal + margin
+}
 
 func (s *AIInsightService) Generate(ctx context.Context, groupID string, month time.Time) error {
 	if !s.enabled || s.apiKey == "" {
@@ -156,6 +213,10 @@ func (s *AIInsightService) Generate(ctx context.Context, groupID string, month t
 	}
 	facts := buildFacts(items, previous)
 	factsJSON, _ := json.Marshal(facts)
+	// Hash TETAP dihitung dari transaksi mentah meski yang dikirim ke model
+	// sudah berupa agregat. Tampilan turunan adalah fungsi deterministik dari
+	// transaksi, jadi mengedit satu transaksi yang kebetulan tidak menggeser
+	// bucket mana pun harus tetap memicu regenerasi.
 	source, _ := json.Marshal(struct {
 		Transactions []repository.InsightTransaction `json:"transactions"`
 		Facts        InsightFacts                    `json:"facts"`
@@ -167,7 +228,7 @@ func (s *AIInsightService) Generate(ctx context.Context, groupID string, month t
 		return err
 	}
 
-	analysis, err := s.callGemini(ctx, facts, items)
+	analysis, err := s.callGemini(ctx, month, facts, items, previous)
 	if err != nil {
 		_ = s.repo.Fail(groupID, month, err.Error())
 		return err
@@ -216,55 +277,276 @@ func buildFacts(items, previous []repository.InsightTransaction) InsightFacts {
 	return f
 }
 
-func (s *AIInsightService) callGemini(ctx context.Context, facts InsightFacts, items []repository.InsightTransaction) (*InsightAnalysis, error) {
-	input, _ := json.Marshal(struct {
-		Facts        InsightFacts                    `json:"facts"`
-		Transactions []repository.InsightTransaction `json:"transactions"`
-	}{facts, items})
-	prompt := "Analisis data keuangan pribadi Indonesia berikut. Gunakan hanya fakta yang tersedia, jangan menciptakan angka, jangan memberi janji hasil, dan berikan saran praktis singkat dalam Bahasa Indonesia. Data: " + string(input)
-	body := map[string]any{
-		"contents":         []any{map[string]any{"parts": []any{map[string]any{"text": prompt}}}},
-		"generationConfig": map[string]any{"temperature": 0.2, "responseMimeType": "application/json", "responseSchema": analysisSchema()},
+// Batas keras representasi yang dikirim ke model. Sebelumnya seluruh transaksi
+// bulan itu dikirim mentah tanpa LIMIT: satu grup yang mengimpor riwayat
+// setahun ke satu bulan bisa menghabiskan puluhan ribu token, dan daftar
+// ratusan baris mengundang model menghitung sendiri lalu berselisih dengan
+// facts. Dengan batas ini, grup 5.000 transaksi berbiaya sama dengan grup 50.
+const (
+	maxCategoryChanges = 12
+	maxLargestExpenses = 10
+	maxWeeklyBuckets   = 5
+)
+
+func buildInsightInput(month time.Time, facts InsightFacts, items, previous []repository.InsightTransaction) insightInput {
+	next := month.AddDate(0, 1, 0)
+	in := insightInput{
+		Period:           month.Format("2006-01"),
+		PeriodLabel:      indonesianMonthLabel(month),
+		Currency:         "IDR",
+		DaysInPeriod:     int(next.Sub(month).Hours() / 24),
+		HasPreviousMonth: len(previous) > 0,
+		Facts:            facts,
+		CategoryChanges:  []CategoryChange{},
+		Weekly:           []WeeklyFlow{},
+		LargestExpenses:  []LargestExpense{},
 	}
-	payload, _ := json.Marshal(body)
-	endpoint := "https://generativelanguage.googleapis.com/v1beta/models/" + url.PathEscape(s.model) + ":generateContent"
+
+	current := map[string]float64{}
+	weeks := map[int]*WeeklyFlow{}
+	days := map[string]struct{}{}
+	largest := []LargestExpense{}
+	var weekendExpense float64
+
+	for _, item := range items {
+		days[item.Date] = struct{}{}
+		flow := weeks[weekOfMonth(item.Date)]
+		if flow == nil {
+			flow = &WeeklyFlow{Week: weekOfMonth(item.Date)}
+			weeks[flow.Week] = flow
+		}
+		if item.Type == "income" {
+			in.IncomeTransactionCount++
+			flow.Income += item.Amount
+			continue
+		}
+		in.ExpenseTransactionCount++
+		flow.Expense += item.Amount
+		current[item.Category] += item.Amount
+		largest = append(largest, LargestExpense{item.Date, item.Category, item.Amount})
+		if isWeekend(item.Date) {
+			weekendExpense += item.Amount
+		}
+	}
+	in.ActiveDays = len(days)
+	if facts.TotalExpense > 0 {
+		in.WeekendExpenseSharePercent = round1(weekendExpense / facts.TotalExpense * 100)
+	}
+
+	if len(previous) > 0 {
+		var previousIncome, previousExpense float64
+		for _, item := range previous {
+			if item.Type == "income" {
+				previousIncome += item.Amount
+			} else {
+				previousExpense += item.Amount
+			}
+		}
+		in.PreviousTotalIncome = &previousIncome
+		in.PreviousTotalExpense = &previousExpense
+	}
+
+	in.CategoryChanges = buildCategoryChanges(current, previous)
+
+	for _, flow := range weeks {
+		in.Weekly = append(in.Weekly, *flow)
+	}
+	sort.Slice(in.Weekly, func(i, j int) bool { return in.Weekly[i].Week < in.Weekly[j].Week })
+
+	sort.Slice(largest, func(i, j int) bool { return largest[i].Amount > largest[j].Amount })
+	if len(largest) > maxLargestExpenses {
+		largest = largest[:maxLargestExpenses]
+	}
+	in.LargestExpenses = largest
+
+	return in
+}
+
+// buildCategoryChanges mengurutkan berdasarkan BESAR PERGERAKAN, bukan besar
+// nominal. Daftar terbesar-menurut-nominal sudah ada sebagai
+// top_expense_categories; yang berguna dari daftar kedua justru kategori yang
+// berubah, karena itu yang layak ditulis satu kalimat.
+func buildCategoryChanges(current map[string]float64, previous []repository.InsightTransaction) []CategoryChange {
+	before := map[string]float64{}
+	for _, item := range previous {
+		if item.Type == "expense" {
+			before[item.Category] += item.Amount
+		}
+	}
+
+	names := map[string]struct{}{}
+	for name := range current {
+		names[name] = struct{}{}
+	}
+	for name := range before {
+		names[name] = struct{}{}
+	}
+
+	changes := []CategoryChange{}
+	for name := range names {
+		change := CategoryChange{Name: name, Amount: current[name], PreviousAmount: before[name]}
+		if before[name] > 0 {
+			percent := round1((current[name] - before[name]) / before[name] * 100)
+			change.ChangePercent = &percent
+		} else {
+			// change_percent WAJIB null, bukan 0 dan bukan Inf. Memancarkan 0
+			// untuk kategori yang baru muncul adalah cara mendapatkan
+			// "Listrik naik 0%" di produksi.
+			change.IsNew = true
+		}
+		changes = append(changes, change)
+	}
+	sort.Slice(changes, func(i, j int) bool {
+		return math.Abs(changes[i].Amount-changes[i].PreviousAmount) > math.Abs(changes[j].Amount-changes[j].PreviousAmount)
+	})
+	if len(changes) > maxCategoryChanges {
+		changes = changes[:maxCategoryChanges]
+	}
+	return changes
+}
+
+func weekOfMonth(date string) int {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return 1
+	}
+	if week := (t.Day()-1)/7 + 1; week <= maxWeeklyBuckets {
+		return week
+	}
+	return maxWeeklyBuckets
+}
+
+func isWeekend(date string) bool {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return false
+	}
+	return t.Weekday() == time.Saturday || t.Weekday() == time.Sunday
+}
+
+// round1 membulatkan ke satu desimal supaya model tidak menerima
+// 34.13793103448276 lalu menuliskannya apa adanya. Prompt meminta persentase
+// satu desimal; angka masukannya harus sudah sesuai bentuk itu agar pemeriksa
+// grounding di eval bisa mencocokkannya kembali.
+func round1(v float64) float64 { return math.Round(v*10) / 10 }
+
+const (
+	geminiAttempts   = 3
+	baseTemperature  = 0.2
+	temperatureStep  = 0.2
+	geminiEndpointFm = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent"
+)
+
+func buildRequestBody(input []byte, temperature float64, thinkingBudget int) map[string]any {
+	return map[string]any{
+		"systemInstruction": map[string]any{
+			"parts": []any{map[string]any{"text": systemPrompt}},
+		},
+		"contents": []any{map[string]any{
+			"role": "user",
+			"parts": []any{map[string]any{
+				"text": "Analisis data berikut, lalu isi seluruh field sesuai kontrak.\n\n<data>\n" + string(input) + "\n</data>",
+			}},
+		}},
+		"generationConfig": map[string]any{
+			"temperature":      temperature,
+			"maxOutputTokens":  maxOutputTokens,
+			"responseMimeType": "application/json",
+			"responseSchema":   analysisSchema(),
+			"thinkingConfig": map[string]any{
+				"thinkingBudget":  thinkingBudget,
+				"includeThoughts": false,
+			},
+		},
+	}
+}
+
+func (s *AIInsightService) callGemini(ctx context.Context, month time.Time, facts InsightFacts, items, previous []repository.InsightTransaction) (*InsightAnalysis, error) {
+	input, _ := json.Marshal(buildInsightInput(month, facts, items, previous))
+	endpoint := fmt.Sprintf(geminiEndpointFm, url.PathEscape(s.model))
+
+	temperature, thinkingBudget := baseTemperature, thinkingBudgetTokens
 	var last error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt < geminiAttempts; attempt++ {
+		// Backoff dipasang SEBELUM percobaan, bukan sesudah. Versi lama
+		// menjalankan select/time.After tanpa syarat, sehingga percobaan
+		// terakhir menunggu 4 detik hanya untuk mengembalikan error yang
+		// sudah dipegangnya.
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(1<<(attempt-1)) * time.Second):
+			}
+		}
+
+		// Payload dibangun ulang di dalam loop. Sebelumnya di-marshal sekali
+		// di luar, jadi ketiga percobaan mengirim byte identik pada suhu yang
+		// sama: kegagalan validasi dijamin terulang persis sama sampai bulan
+		// itu ditandai gagal.
+		payload, _ := json.Marshal(buildRequestBody(input, temperature, thinkingBudget))
 		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("x-goog-api-key", s.apiKey)
+
 		res, err := s.client.Do(req)
 		if err != nil {
 			last = err
-		} else {
-			data, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-			res.Body.Close()
-			if res.StatusCode >= 200 && res.StatusCode < 300 {
-				analysis, err := parseGemini(data)
-				if err == nil {
-					return analysis, nil
-				}
-				last = err
-			} else {
-				last = fmt.Errorf("Gemini HTTP %d", res.StatusCode)
-				if res.StatusCode != 429 && res.StatusCode < 500 {
-					return nil, last
-				}
-			}
+			continue
 		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(time.Duration(1<<attempt) * time.Second):
+		data, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		res.Body.Close()
+
+		if res.StatusCode < 200 || res.StatusCode >= 300 {
+			// Badan respons ikut dibawa: pada 400, di situlah Gemini
+			// menyebutkan field mana yang ditolak. Tanpa itu, kegagalan
+			// konfigurasi skema hanya terlihat sebagai "HTTP 400" di kolom
+			// error_message. Dipotong karena Fail() menyimpan 500 karakter.
+			last = fmt.Errorf("Gemini HTTP %d: %s", res.StatusCode, firstLine(data, 300))
+			if res.StatusCode != 429 && res.StatusCode < 500 {
+				return nil, last
+			}
+			continue
+		}
+
+		analysis, err := parseGemini(data)
+		if err == nil {
+			return analysis, nil
+		}
+		last = err
+
+		switch {
+		case errors.Is(err, errGeminiRefused):
+			// Penolakan tidak transien. Mengulanginya hanya membakar jatah
+			// waktu grup ini dan menunda semua grup sesudahnya.
+			return nil, last
+		case errors.Is(err, errGeminiTruncated):
+			thinkingBudget = 0
+		default:
+			temperature += temperatureStep
 		}
 	}
 	return nil, last
 }
 
+func firstLine(data []byte, limit int) string {
+	text := strings.Join(strings.Fields(string(data)), " ")
+	if len(text) > limit {
+		text = text[:limit] + "..."
+	}
+	return text
+}
+
+var (
+	errGeminiTruncated = errors.New("Gemini response truncated")
+	errGeminiRefused   = errors.New("Gemini refused to answer")
+)
+
 func parseGemini(data []byte) (*InsightAnalysis, error) {
 	var response struct {
 		Candidates []struct {
-			Content struct {
+			FinishReason string `json:"finishReason"`
+			Content      struct {
 				Parts []struct {
 					Text string `json:"text"`
 				} `json:"parts"`
@@ -274,11 +556,24 @@ func parseGemini(data []byte) (*InsightAnalysis, error) {
 	if err := json.Unmarshal(data, &response); err != nil {
 		return nil, err
 	}
-	if len(response.Candidates) == 0 || len(response.Candidates[0].Content.Parts) == 0 {
+	if len(response.Candidates) == 0 {
+		return nil, errors.New("Gemini returned no analysis")
+	}
+	candidate := response.Candidates[0]
+	// Tanpa membaca finishReason, pemotongan MAX_TOKENS muncul sebagai
+	// "unexpected end of JSON input" yang buram lalu diulang secara identik
+	// sampai habis percobaan.
+	switch candidate.FinishReason {
+	case "MAX_TOKENS":
+		return nil, errGeminiTruncated
+	case "SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII":
+		return nil, fmt.Errorf("%w: %s", errGeminiRefused, candidate.FinishReason)
+	}
+	if len(candidate.Content.Parts) == 0 {
 		return nil, errors.New("Gemini returned no analysis")
 	}
 	var a InsightAnalysis
-	if err := json.Unmarshal([]byte(response.Candidates[0].Content.Parts[0].Text), &a); err != nil {
+	if err := json.Unmarshal([]byte(candidate.Content.Parts[0].Text), &a); err != nil {
 		return nil, err
 	}
 	if err := validateAnalysis(&a); err != nil {
@@ -292,10 +587,10 @@ func validateAnalysis(a *InsightAnalysis) error {
 	if !valid {
 		return errors.New("invalid health status")
 	}
-	if strings.TrimSpace(a.Headline) == "" || len([]rune(a.Headline)) > 120 || strings.TrimSpace(a.Summary) == "" || len([]rune(a.Summary)) > 700 {
+	if strings.TrimSpace(a.Headline) == "" || len([]rune(a.Headline)) > maxHeadlineRunes || strings.TrimSpace(a.Summary) == "" || len([]rune(a.Summary)) > maxSummaryRunes {
 		return errors.New("invalid analysis text")
 	}
-	if len(a.KeyFindings) > 5 || len(a.Recommendations) > 5 || len(a.Cautions) > 3 {
+	if len(a.KeyFindings) > maxKeyFindings || len(a.Recommendations) > maxRecommendations || len(a.Cautions) > maxCautions {
 		return errors.New("analysis contains too many items")
 	}
 	// Slice nil di-serialize menjadi `null`, bukan `[]`. Klien yang memakai
@@ -312,14 +607,6 @@ func validateAnalysis(a *InsightAnalysis) error {
 		a.Cautions = []string{}
 	}
 	return nil
-}
-
-func analysisSchema() map[string]any {
-	return map[string]any{"type": "OBJECT", "properties": map[string]any{
-		"headline": map[string]any{"type": "STRING"}, "summary": map[string]any{"type": "STRING"}, "health_status": map[string]any{"type": "STRING", "enum": []string{"good", "watch", "risk"}},
-		"key_findings":    map[string]any{"type": "ARRAY", "items": map[string]any{"type": "STRING"}, "maxItems": 5},
-		"recommendations": map[string]any{"type": "ARRAY", "items": map[string]any{"type": "OBJECT", "properties": map[string]any{"title": map[string]any{"type": "STRING"}, "action": map[string]any{"type": "STRING"}, "priority": map[string]any{"type": "STRING", "enum": []string{"low", "medium", "high"}}}, "required": []string{"title", "action", "priority"}}, "maxItems": 5},
-		"cautions":        map[string]any{"type": "ARRAY", "items": map[string]any{"type": "STRING"}, "maxItems": 3}}, "required": []string{"headline", "summary", "health_status", "key_findings", "recommendations", "cautions"}}
 }
 
 func insightResponse(i *repository.AIInsight) (*InsightResponse, error) {
@@ -356,6 +643,25 @@ func normalizeMonth(t time.Time) time.Time {
 func previousMonth(now time.Time) time.Time {
 	return normalizeMonth(now.In(jakartaLocation())).AddDate(0, -1, 0)
 }
+
+// NextInsightRun mengembalikan jadwal sapuan berikutnya: tanggal 1 pukul
+// 00:01 waktu Jakarta.
+//
+// Sebelumnya scheduler memakai ticker 24 jam dari waktu boot, sehingga jam
+// jalannya ikut jam deploy dan bergeser setiap kali server di-restart.
+// Tanggal 1 dipilih karena GeneratePreviousMonthForEnabled menganalisis bulan
+// SEBELUMNYA — pada tanggal 1 bulan itu baru saja tertutup dan datanya sudah
+// lengkap. Menit ke-1, bukan ke-0, memberi jarak dari tengah malam tepat.
+func NextInsightRun(now time.Time) time.Time {
+	jakarta := jakartaLocation()
+	local := now.In(jakarta)
+	next := time.Date(local.Year(), local.Month(), 1, 0, 1, 0, 0, jakarta)
+	if !next.After(local) {
+		next = next.AddDate(0, 1, 0)
+	}
+	return next
+}
+
 func jakartaLocation() *time.Location {
 	loc, err := time.LoadLocation("Asia/Jakarta")
 	if err != nil {

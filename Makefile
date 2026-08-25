@@ -47,6 +47,12 @@ test-cover: ## Run tests with coverage
 test-short: ## Run tests without integration (DB-dependent) tests
 	go test ./pkg/... -v -count=1 -short
 
+test-unit: ## Run all DB-free unit tests (same set as CI)
+	go test ./internal/... ./pkg/... -count=1 -short
+
+test-ai-eval: ## Eval prompt AI insight terhadap Gemini asli (butuh GEMINI_API_KEY)
+	RUN_AI_EVAL=1 go test ./internal/service/ -run TestAIInsightEval -v -count=1 -timeout 20m
+
 test-service: ## Run service tests (requires PostgreSQL)
 	go test ./test/service/... -v -count=1
 

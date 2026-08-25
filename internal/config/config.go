@@ -77,9 +77,9 @@ func Load() *Config {
 		LogLevel:           getEnv("LOG_LEVEL", "debug"),
 		AIInsightsEnabled:  getEnvBool("AI_INSIGHTS_ENABLED", false),
 		GeminiAPIKey:       getEnv("GEMINI_API_KEY", ""),
-		AIModel:            getEnv("AI_MODEL", "gemini-2.5-flash-lite"),
-		AIPromptVersion:    getEnv("AI_PROMPT_VERSION", "v1"),
-		AITimeout:          getEnvDuration("AI_TIMEOUT", 30*time.Second),
+		AIModel:            getEnv("AI_MODEL", "gemini-flash-lite-latest"),
+		AIPromptVersion:    getEnv("AI_PROMPT_VERSION", "v2"),
+		AITimeout:          getEnvDuration("AI_TIMEOUT", 90*time.Second),
 	}
 
 	// Kumpulkan semua yang kosong dulu, baru lapor sekaligus — supaya tidak

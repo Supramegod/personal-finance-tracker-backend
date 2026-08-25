@@ -146,9 +146,9 @@ RATE_LIMIT_PER_MINUTE=60
 # Insight AI (API key dibuat di Google AI Studio)
 AI_INSIGHTS_ENABLED=true
 GEMINI_API_KEY=<GEMINI_API_KEY>
-AI_MODEL=gemini-2.5-flash-lite
-AI_PROMPT_VERSION=v1
-AI_TIMEOUT=30s
+AI_MODEL=gemini-flash-lite-latest
+AI_PROMPT_VERSION=v2
+AI_TIMEOUT=90s
 ```
 
 Simpan (`Ctrl+O`, Enter, `Ctrl+X`), kunci izinnya:
